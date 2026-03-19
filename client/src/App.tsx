@@ -22,6 +22,7 @@ export const useToast = () => useContext(ToastContext);
 
 function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const addToast = useCallback((message: string, type: Toast['type']) => {
     const id = Date.now();
@@ -35,32 +36,52 @@ function App() {
     <ToastContext.Provider value={{ addToast }}>
       <BrowserRouter>
         <div className="app-layout">
+          {/* Mobile Header */}
+          <div className="mobile-header">
+            <button className="btn-icon menu-button" onClick={() => setIsSidebarOpen(true)}>
+              ☰
+            </button>
+            <NavLink to="/" className="sidebar-logo" onClick={() => setIsSidebarOpen(false)}>
+              <div className="logo-icon small">⚖️</div>
+              <span className="logo-text">LexLedger</span>
+            </NavLink>
+            <div style={{ width: 36 }}></div>
+          </div>
+
+          {/* Sidebar Overlay */}
+          {isSidebarOpen && (
+            <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)} />
+          )}
+
           {/* Sidebar */}
-          <aside className="sidebar">
+          <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
             <div className="sidebar-header">
-              <div className="sidebar-logo">
+              <NavLink to="/" className="sidebar-logo" onClick={() => setIsSidebarOpen(false)}>
                 <div className="logo-icon">⚖️</div>
                 <span className="logo-text">LexLedger</span>
-              </div>
+              </NavLink>
+              <button className="btn-icon close-mobile-menu" onClick={() => setIsSidebarOpen(false)}>
+                ✕
+              </button>
             </div>
             <nav className="sidebar-nav">
-              <NavLink to="/" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)}>
                 <span className="nav-icon">📊</span>
                 <span>Dashboard</span>
               </NavLink>
-              <NavLink to="/invoices" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/invoices" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)}>
                 <span className="nav-icon">🧾</span>
                 <span>Invoices</span>
               </NavLink>
-              <NavLink to="/invoices/new" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/invoices/new" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)}>
                 <span className="nav-icon">➕</span>
                 <span>New Invoice</span>
               </NavLink>
-              <NavLink to="/clients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/clients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)}>
                 <span className="nav-icon">👥</span>
                 <span>Clients</span>
               </NavLink>
-              <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)}>
                 <span className="nav-icon">⚙️</span>
                 <span>Settings</span>
               </NavLink>
