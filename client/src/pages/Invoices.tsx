@@ -66,6 +66,13 @@ export default function Invoices() {
       addToast(err.message, 'error');
     }
   };
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '—';
+    const [year, month, day] = dateStr.split('T')[0].split('-');
+    if (year && month && day) return `${day}/${month}/${year}`;
+    return dateStr;
+  };
+
   const filtered = invoices.filter(inv =>
     inv.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
     inv.client_name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -81,7 +88,7 @@ export default function Invoices() {
           <p className="page-subtitle">{invoices.length} total invoices</p>
         </div>
         <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
-          ➕ New Invoice
+          + New Invoice
         </button>
       </div>
       {/* Filter bar */}
@@ -129,8 +136,8 @@ export default function Invoices() {
                     {inv.invoice_number}
                   </td>
                   <td>{inv.client_name}</td>
-                  <td>{inv.date}</td>
-                  <td>{inv.due_date || '—'}</td>
+                  <td>{formatDate(inv.date)}</td>
+                  <td>{formatDate(inv.due_date)}</td>
                   <td style={{ fontWeight: 600 }}>₹{inv.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td>
                     <select
@@ -148,10 +155,10 @@ export default function Invoices() {
                   </td>
                   <td>
                     <div className="btn-group">
-                      <button className="btn-icon" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>✏️</button>
-                      <button className="btn-icon" title="PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}>📥</button>
-                      <button className="btn-icon" title="Excel" onClick={() => downloadExcel(inv.id, inv.invoice_number)}>📊</button>
-                      <button className="btn-icon" title="Send Email" onClick={() => handleSend(inv.id)}>📧</button>
+                      <button className="btn-icon" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>✍️</button>
+                      <button className="btn-icon" title="PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}>PDF</button>
+                      <button className="btn-icon" title="Excel" onClick={() => downloadExcel(inv.id, inv.invoice_number)}>Excel</button>
+                      <button className="btn-icon" title="Send Email" onClick={() => handleSend(inv.id)}>✉️</button>
                       {(inv.status === 'sent' || inv.status === 'overdue') && (
                         <button className="btn-icon" title="Send Reminder" onClick={() => handleRemind(inv.id)}>🔔</button>
                       )}

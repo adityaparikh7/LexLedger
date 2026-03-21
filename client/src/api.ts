@@ -26,6 +26,11 @@ export interface Invoice {
   due_date: string | null;
   status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
   notes: string | null;
+  case_name: string | null;
+  case_party1_type: string | null;
+  case_plaintiff: string | null;
+  case_party2_type: string | null;
+  case_defendant: string | null;
   subtotal: number;
   tax_rate: number;
   tax_amount: number;

@@ -84,7 +84,7 @@ export default function Clients() {
           <p className="page-subtitle">{clients.length} clients</p>
         </div>
         <button className="btn btn-primary" onClick={openAddModal}>
-          ➕ Add Client
+          + Add Client
         </button>
       </div>
       {/* Search */}
@@ -191,7 +191,7 @@ export default function Clients() {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  {editingClient ? '💾 Update' : '➕ Add Client'}
+                  {editingClient ? '💾 Update' : '+ Add Client'}
                 </button>
               </div>
             </form>

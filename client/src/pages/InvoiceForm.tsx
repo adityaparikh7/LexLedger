@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  getClients, getInvoice, createInvoice, updateInvoice,
+  getClients, getInvoice, createInvoice, updateInvoice, createClient,
   type Client, type LineItem
 } from '../api';
 import { useToast } from '../App';
@@ -23,10 +23,24 @@ export default function InvoiceForm() {
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [taxRate, setTaxRate] = useState('0');
+  const [caseName, setCaseName] = useState('');
+  const [caseParty1Type, setCaseParty1Type] = useState('Plaintiff');
+  const [casePlaintiff, setCasePlaintiff] = useState('');
+  const [caseParty2Type, setCaseParty2Type] = useState('Defendant');
+  const [caseDefendant, setCaseDefendant] = useState('');
   const [lineItems, setLineItems] = useState<FormLineItem[]>([
     { description: '', hours: '', rate: '' }
   ]);
   const [invoiceNumber, setInvoiceNumber] = useState('');
+
+  // Client Modal State
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientEmail, setNewClientEmail] = useState('');
+  const [newClientPhone, setNewClientPhone] = useState('');
+  const [newClientAddress, setNewClientAddress] = useState('');
+  const [creatingClient, setCreatingClient] = useState(false);
+
   useEffect(() => {
     const init = async () => {
       try {
@@ -40,6 +54,11 @@ export default function InvoiceForm() {
           setNotes(invoice.notes || '');
           setTaxRate(String(invoice.tax_rate));
           setInvoiceNumber(invoice.invoice_number);
+          setCaseName(invoice.case_name || '');
+          setCaseParty1Type(invoice.case_party1_type || 'Plaintiff');
+          setCasePlaintiff(invoice.case_plaintiff || '');
+          setCaseParty2Type(invoice.case_party2_type || 'Defendant');
+          setCaseDefendant(invoice.case_defendant || '');
           if (invoice.line_items && invoice.line_items.length > 0) {
             setLineItems(invoice.line_items.map((li: LineItem) => ({
               description: li.description,
@@ -77,6 +96,36 @@ export default function InvoiceForm() {
   const subtotal = lineItems.reduce((sum, item) => sum + calculateAmount(item), 0);
   const taxAmount = subtotal * (parseFloat(taxRate) || 0) / 100;
   const total = subtotal + taxAmount;
+
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingClient(true);
+    try {
+      const newClient = await createClient({
+        name: newClientName,
+        email: newClientEmail,
+        phone: newClientPhone,
+        address: newClientAddress,
+      });
+      addToast('Client created!', 'success');
+      
+      const clientList = await getClients();
+      setClients(clientList);
+      
+      setClientId(String(newClient.id));
+      
+      setNewClientName('');
+      setNewClientEmail('');
+      setNewClientPhone('');
+      setNewClientAddress('');
+      setShowClientModal(false);
+    } catch (err: any) {
+      addToast(err.message, 'error');
+    } finally {
+      setCreatingClient(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientId) {
@@ -92,9 +141,15 @@ export default function InvoiceForm() {
     try {
       const payload = {
         client_id: Number(clientId),
+        invoice_number: isEditing ? invoiceNumber : undefined,
         date,
         due_date: dueDate || null,
         notes: notes || null,
+        case_name: caseName || null,
+        case_party1_type: caseParty1Type || null,
+        case_plaintiff: casePlaintiff || null,
+        case_party2_type: caseParty2Type || null,
+        case_defendant: caseDefendant || null,
         tax_rate: parseFloat(taxRate) || 0,
         line_items: validItems.map(li => ({
           description: li.description,
@@ -137,6 +192,18 @@ export default function InvoiceForm() {
         <div className="card" style={{ marginBottom: 24 }}>
           <h3 style={{ marginBottom: 20, fontSize: 16, fontWeight: 600 }}>Invoice Details</h3>
           <div className="form-row">
+            {isEditing && (
+              <div className="form-group">
+                <label className="form-label">Invoice Number *</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={invoiceNumber}
+                  onChange={e => setInvoiceNumber(e.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div className="form-group">
               <label className="form-label">Client *</label>
               <select
@@ -150,9 +217,9 @@ export default function InvoiceForm() {
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-              {clients.length === 0 && (
+              {(
                 <p style={{ marginTop: 8, fontSize: 12, color: 'var(--accent-amber)' }}>
-                  No clients found. <span style={{ cursor: 'pointer', color: 'var(--accent-blue)' }} onClick={() => navigate('/clients')}>Add a client first →</span>
+                  <span style={{ cursor: 'pointer', color: 'var(--accent-blue)' }} onClick={() => setShowClientModal(true)}>Add a new client? →</span>
                 </p>
               )}
             </div>
@@ -177,12 +244,76 @@ export default function InvoiceForm() {
             </div>
           </div>
         </div>
+        {/* Case Details */}
+        <div className="card" style={{ marginBottom: 24 }}>
+          <h3 style={{ marginBottom: 20, fontSize: 16, fontWeight: 600 }}>Case Details</h3>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Case Name / Title</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Smith vs. Johnson"
+                value={caseName}
+                onChange={e => setCaseName(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">First Party Type</label>
+              <select
+                className="form-select"
+                value={caseParty1Type}
+                onChange={e => setCaseParty1Type(e.target.value)}
+              >
+                <option value="Plaintiff">Plaintiff</option>
+                <option value="Appellant">Appellant</option>
+                <option value="Applicant">Applicant</option>
+                <option value="Petitioner">Petitioner</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: 2 }}>
+              <label className="form-label">{caseParty1Type} Details</label>
+              <textarea
+                className="form-textarea"
+                placeholder={`Name(s) and details of the ${caseParty1Type.toLowerCase()}(s)...`}
+                value={casePlaintiff}
+                onChange={e => setCasePlaintiff(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Second Party Type</label>
+              <select
+                className="form-select"
+                value={caseParty2Type}
+                onChange={e => setCaseParty2Type(e.target.value)}
+              >
+                <option value="Defendant">Defendant</option>
+                <option value="Respondent">Respondent</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: 2 }}>
+              <label className="form-label">{caseParty2Type} Details</label>
+              <textarea
+                className="form-textarea"
+                placeholder={`Name(s) and details of the ${caseParty2Type.toLowerCase()}(s)...`}
+                value={caseDefendant}
+                onChange={e => setCaseDefendant(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+        </div>
         {/* Line Items */}
         <div className="card" style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <h3 style={{ fontSize: 16, fontWeight: 600 }}>Services Performed</h3>
             <button type="button" className="btn btn-outline btn-sm" onClick={addLineItem}>
-              ➕ Add Service
+              + Add Service
             </button>
           </div>
           <div className="line-items-section">
@@ -297,6 +428,68 @@ export default function InvoiceForm() {
           </button>
         </div>
       </form>
+
+      {/* Add Client Modal */}
+      {showClientModal && (
+        <div className="modal-overlay" onClick={() => setShowClientModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Add Client</h3>
+              <button className="btn-icon" onClick={() => setShowClientModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCreateClient}>
+              <div className="form-group">
+                <label className="form-label">Name *</label>
+                <input
+                  className="form-input"
+                  placeholder="Client name..."
+                  value={newClientName}
+                  onChange={e => setNewClientName(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  placeholder="client@example.com"
+                  value={newClientEmail}
+                  onChange={e => setNewClientEmail(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Phone</label>
+                <input
+                  className="form-input"
+                  placeholder="+1 (555) 123-4567"
+                  value={newClientPhone}
+                  onChange={e => setNewClientPhone(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Address</label>
+                <textarea
+                  className="form-textarea"
+                  placeholder="Client address..."
+                  value={newClientAddress}
+                  onChange={e => setNewClientAddress(e.target.value)}
+                  rows={2}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setShowClientModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={creatingClient}>
+                  {creatingClient ? '⏳ Saving...' : '+ Add Client'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

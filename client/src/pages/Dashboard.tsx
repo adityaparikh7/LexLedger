@@ -31,6 +31,13 @@ export default function Dashboard() {
     return <div className="loading-center"><div className="spinner"></div></div>;
   }
   const stats = data?.stats;
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '—';
+    const [year, month, day] = dateStr.split('T')[0].split('-');
+    if (year && month && day) return `${day}/${month}/${year}`;
+    return dateStr;
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -39,7 +46,7 @@ export default function Dashboard() {
           <p className="page-subtitle">Overview of your billing activity</p>
         </div>
         <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
-          ➕ New Invoice
+          + New Invoice
         </button>
       </div>
       {/* Stats Grid */}
@@ -109,7 +116,7 @@ export default function Dashboard() {
                 <tr key={inv.id}>
                   <td style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>{inv.invoice_number}</td>
                   <td>{inv.client_name}</td>
-                  <td>{inv.date}</td>
+                  <td>{formatDate(inv.date)}</td>
                   <td style={{ fontWeight: 600 }}>₹{inv.total.toFixed(2)}</td>
                   <td><span className={`badge ${inv.status}`}>{inv.status}</span></td>
                   <td>
