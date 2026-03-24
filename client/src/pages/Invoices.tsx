@@ -122,7 +122,7 @@ export default function Invoices() {
                 <th>Invoice #</th>
                 <th>Client</th>
                 <th>Date</th>
-                <th>Due Date</th>
+                <th>Date Paid</th>
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -137,7 +137,7 @@ export default function Invoices() {
                   </td>
                   <td>{inv.client_name}</td>
                   <td>{formatDate(inv.date)}</td>
-                  <td>{formatDate(inv.due_date)}</td>
+                  <td>{formatDate(inv.date_paid)}</td>
                   <td style={{ fontWeight: 600 }}>₹{inv.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td>
                     <select

@@ -23,7 +23,7 @@ export interface Invoice {
   client_address?: string | null;
   client_phone?: string | null;
   date: string;
-  due_date: string | null;
+  date_paid: string | null;
   status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
   notes: string | null;
   case_name: string | null;

@@ -5,7 +5,7 @@ interface Invoice {
   client_email: string;
   total: number;
   date: string;
-  due_date: string | null;
+  date_paid: string | null;
   status: string;
 }
 async function getTransporter() {
@@ -52,10 +52,10 @@ export async function sendInvoiceEmail(
             <td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Date</td>
             <td style="padding: 8px; border-bottom: 1px solid #eee;">${invoice.date}</td>
           </tr>
-          ${invoice.due_date ? `
+          ${invoice.date_paid ? `
           <tr>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Due Date</td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee;">${invoice.due_date}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Date Paid</td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee;">${invoice.date_paid}</td>
           </tr>
           ` : ''}
           <tr>
@@ -102,10 +102,10 @@ export async function sendReminderEmail(
             <td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Original Date</td>
             <td style="padding: 8px; border-bottom: 1px solid #eee;">${invoice.date}</td>
           </tr>
-          ${invoice.due_date ? `
+          ${invoice.date_paid ? `
           <tr>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Due Date</td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee; color: #dc3545; font-weight: bold;">${invoice.due_date}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Date Paid</td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee; color: #dc3545; font-weight: bold;">${invoice.date_paid}</td>
           </tr>
           ` : ''}
           <tr>

@@ -3,7 +3,7 @@ import ExcelJS from 'exceljs';
 interface Invoice {
   invoice_number: string;
   date: string;
-  due_date: string | null;
+  date_paid: string | null;
   client_name: string;
   client_email: string | null;
   client_address: string | null;

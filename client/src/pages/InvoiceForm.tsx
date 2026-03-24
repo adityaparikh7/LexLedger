@@ -20,7 +20,7 @@ export default function InvoiceForm() {
   const [saving, setSaving] = useState(false);
   const [clientId, setClientId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState('');
+  const [datePaid, setDatePaid] = useState('');
   const [notes, setNotes] = useState('');
   const [taxRate, setTaxRate] = useState('0');
   const [caseName, setCaseName] = useState('');
@@ -50,7 +50,7 @@ export default function InvoiceForm() {
           const invoice = await getInvoice(Number(id));
           setClientId(String(invoice.client_id));
           setDate(invoice.date);
-          setDueDate(invoice.due_date || '');
+          setDatePaid(invoice.date_paid || '');
           setNotes(invoice.notes || '');
           setTaxRate(String(invoice.tax_rate));
           setInvoiceNumber(invoice.invoice_number);
@@ -143,7 +143,7 @@ export default function InvoiceForm() {
         client_id: Number(clientId),
         invoice_number: isEditing ? invoiceNumber : undefined,
         date,
-        due_date: dueDate || null,
+        date_paid: datePaid || null,
         notes: notes || null,
         case_name: caseName || null,
         case_party1_type: caseParty1Type === 'None' ? null : (caseParty1Type || null),
@@ -252,12 +252,12 @@ export default function InvoiceForm() {
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Due Date</label>
+              <label className="form-label">Date Paid</label>
               <input
                 type="date"
                 className="form-input"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                value={datePaid}
+                onChange={(e) => setDatePaid(e.target.value)}
               />
             </div>
           </div>

@@ -32,7 +32,7 @@ export function initDatabase(): void {
       invoice_number TEXT UNIQUE NOT NULL,
       client_id INTEGER NOT NULL,
       date TEXT NOT NULL,
-      due_date TEXT,
+      date_paid TEXT,
       status TEXT DEFAULT 'draft' CHECK(status IN ('draft','sent','paid','overdue','cancelled')),
       notes TEXT,
       case_name TEXT,
@@ -78,6 +78,15 @@ export function initDatabase(): void {
     } catch (_) {
       // Column already exists — ignore
     }
+  }
+
+  // Migration: rename due_date to date_paid
+  try {
+    // Attempt to rename the column if it exists as due_date
+    // Since pragma table_info shows column details, we could check, or let the exception handle it.
+    db.exec(`ALTER TABLE invoices RENAME COLUMN due_date TO date_paid`);
+  } catch (_) {
+    // Column might already be renamed or doesn't exist — ignore
   }
 }
 
