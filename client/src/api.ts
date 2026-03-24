@@ -35,6 +35,8 @@ export interface Invoice {
   tax_rate: number;
   tax_amount: number;
   total: number;
+  amount_received: number;
+  tds_amount: number;
   line_items?: LineItem[];
   copies?: InvoiceCopy[];
   created_at: string;
@@ -107,8 +109,8 @@ export const updateInvoice = (id: number, data: any): Promise<Invoice> =>
   request(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteInvoice = (id: number): Promise<void> =>
   request(`/invoices/${id}`, { method: 'DELETE' });
-export const updateInvoiceStatus = (id: number, status: string): Promise<Invoice> =>
-  request(`/invoices/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+export const updateInvoiceStatus = (id: number, status: string, paymentDetails?: { date_paid?: string; amount_received?: number; tds_amount?: number }): Promise<Invoice> =>
+  request(`/invoices/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, ...paymentDetails }) });
 // Downloads
 export const downloadPDF = async (id: number, invoiceNumber: string) => {
   const blob = await request(`/invoices/${id}/pdf`);

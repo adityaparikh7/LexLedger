@@ -13,6 +13,13 @@ export default function Invoices() {
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
   const { addToast } = useToast();
+
+  // Payment modal state
+  const [paymentModal, setPaymentModal] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
+  const [paymentDatePaid, setPaymentDatePaid] = useState('');
+  const [paymentAmountReceived, setPaymentAmountReceived] = useState('');
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+
   const fetchInvoices = async () => {
     try {
       const data = await getInvoices(statusFilter ? { status: statusFilter } : undefined);
@@ -34,15 +41,45 @@ export default function Invoices() {
       addToast(err.message, 'error');
     }
   };
-  const handleStatusChange = async (id: number, status: string) => {
+  const handleStatusChange = async (inv: Invoice, newStatus: string) => {
+    if (newStatus === 'paid') {
+      // Open payment modal instead of immediately changing status
+      setPaymentModal({ open: true, invoice: inv });
+      setPaymentDatePaid(new Date().toISOString().split('T')[0]);
+      setPaymentAmountReceived(String(inv.total));
+      return;
+    }
     try {
-      await updateInvoiceStatus(id, status);
-      addToast(`Invoice marked as ${status}`, 'success');
+      await updateInvoiceStatus(inv.id, newStatus);
+      addToast(`Invoice marked as ${newStatus}`, 'success');
       fetchInvoices();
     } catch (err: any) {
       addToast(err.message, 'error');
     }
   };
+
+  const handlePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentModal.invoice) return;
+    const amountReceived = parseFloat(paymentAmountReceived) || 0;
+    const tdsAmount = paymentModal.invoice.total - amountReceived;
+    setSubmittingPayment(true);
+    try {
+      await updateInvoiceStatus(paymentModal.invoice.id, 'paid', {
+        date_paid: paymentDatePaid,
+        amount_received: amountReceived,
+        tds_amount: tdsAmount,
+      });
+      addToast('Invoice marked as paid', 'success');
+      setPaymentModal({ open: false, invoice: null });
+      fetchInvoices();
+    } catch (err: any) {
+      addToast(err.message, 'error');
+    } finally {
+      setSubmittingPayment(false);
+    }
+  };
+
   const handleSend = async (id: number) => {
     try {
       const result = await sendInvoice(id);
@@ -72,11 +109,18 @@ export default function Invoices() {
     if (year && month && day) return `${day}/${month}/${year}`;
     return dateStr;
   };
+  const formatCurrency = (val: number) =>
+    `₹${val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const filtered = invoices.filter(inv =>
     inv.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
     inv.client_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const tdsAmount = paymentModal.invoice
+    ? paymentModal.invoice.total - (parseFloat(paymentAmountReceived) || 0)
+    : 0;
+
   if (loading) {
     return <div className="loading-center"><div className="spinner"></div></div>;
   }
@@ -124,6 +168,8 @@ export default function Invoices() {
                 <th>Date</th>
                 <th>Date Paid</th>
                 <th>Amount</th>
+                <th>Received</th>
+                <th>TDS</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -138,12 +184,14 @@ export default function Invoices() {
                   <td>{inv.client_name}</td>
                   <td>{formatDate(inv.date)}</td>
                   <td>{formatDate(inv.date_paid)}</td>
-                  <td style={{ fontWeight: 600 }}>₹{inv.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td style={{ fontWeight: 600 }}>{formatCurrency(inv.total)}</td>
+                  <td>{inv.amount_received ? formatCurrency(inv.amount_received) : '—'}</td>
+                  <td>{inv.tds_amount ? formatCurrency(inv.tds_amount) : '—'}</td>
                   <td>
                     <select
                       className="form-select"
                       value={inv.status}
-                      onChange={e => handleStatusChange(inv.id, e.target.value)}
+                      onChange={e => handleStatusChange(inv, e.target.value)}
                       style={{ width: 'auto', minWidth: 100, padding: '4px 28px 4px 10px', fontSize: 12 }}
                     >
                       <option value="draft">Draft</option>
@@ -179,6 +227,81 @@ export default function Invoices() {
           </div>
         )}
       </div>
+
+      {/* Payment Details Modal */}
+      {paymentModal.open && paymentModal.invoice && (
+        <div className="modal-overlay" onClick={() => setPaymentModal({ open: false, invoice: null })}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Payment Details</h3>
+              <button
+                className="btn-icon"
+                onClick={() => setPaymentModal({ open: false, invoice: null })}>
+                ✕
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              Invoice <strong>{paymentModal.invoice.invoice_number}</strong> — Total: <strong>{formatCurrency(paymentModal.invoice.total)}</strong>
+            </p>
+            <form onSubmit={handlePaymentSubmit}>
+              <div className="form-group">
+                <label className="form-label">Date Paid *</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={paymentDatePaid}
+                  onChange={(e) => setPaymentDatePaid(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Amount Received (₹) *</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  placeholder="0.00"
+                  value={paymentAmountReceived}
+                  onChange={(e) => setPaymentAmountReceived(e.target.value)}
+                  min="0"
+                  step="0.01"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">TDS Amount (₹)</label>
+                <input
+                  className="form-input"
+                  value={formatCurrency(tdsAmount)}
+                  disabled
+                  style={{
+                    background: 'rgba(79, 142, 255, 0.05)',
+                    fontWeight: 600,
+                    color: tdsAmount > 0 ? 'var(--accent-amber)' : 'var(--text-primary)',
+                  }}
+                />
+                <p style={{ marginTop: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
+                  Auto-calculated: Total ({formatCurrency(paymentModal.invoice.total)}) − Amount Received
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setPaymentModal({ open: false, invoice: null })}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={submittingPayment}>
+                  {submittingPayment ? '⏳ Saving...' : '✅ Mark as Paid'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

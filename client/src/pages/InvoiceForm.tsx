@@ -32,6 +32,8 @@ export default function InvoiceForm() {
     { description: '', hours: '', rate: '' }
   ]);
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [amountReceived, setAmountReceived] = useState('');
+  const [tdsAmount, setTdsAmount] = useState('');
 
   // Client Modal State
   const [showClientModal, setShowClientModal] = useState(false);
@@ -66,6 +68,8 @@ export default function InvoiceForm() {
               rate: String(li.rate || ''),
             })));
           }
+          setAmountReceived(invoice.amount_received ? String(invoice.amount_received) : '');
+          setTdsAmount(invoice.tds_amount ? String(invoice.tds_amount) : '');
         }
       } catch (err: any) {
         addToast(err.message, 'error');
@@ -157,6 +161,8 @@ export default function InvoiceForm() {
           rate: parseFloat(li.rate) || 0,
           amount: calculateAmount(li),
         })),
+        amount_received: parseFloat(amountReceived) || 0,
+        tds_amount: parseFloat(tdsAmount) || 0,
       };
       if (isEditing) {
         await updateInvoice(Number(id), payload);
@@ -468,6 +474,48 @@ export default function InvoiceForm() {
             </div>
           </div>
         </div>
+        {/* Payment Details (shown when editing with payment info) */}
+        {isEditing && (parseFloat(amountReceived) > 0 || parseFloat(tdsAmount) > 0) && (
+          <div className="card" style={{ marginBottom: 24 }}>
+            <h3 style={{ marginBottom: 20, fontSize: 16, fontWeight: 600 }}>
+              💰 Payment Details
+            </h3>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Amount Received (₹)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  placeholder="0.00"
+                  value={amountReceived}
+                  onChange={(e) => {
+                    setAmountReceived(e.target.value);
+                    const received = parseFloat(e.target.value) || 0;
+                    setTdsAmount(String(total - received));
+                  }}
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">TDS Amount (₹)</label>
+                <input
+                  className="form-input"
+                  value={`₹${(parseFloat(tdsAmount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  disabled
+                  style={{
+                    background: 'rgba(79, 142, 255, 0.05)',
+                    fontWeight: 600,
+                    color: 'var(--accent-amber)',
+                  }}
+                />
+                <p style={{ marginTop: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
+                  Auto-calculated: Total − Amount Received
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Notes */}
         <div className="card" style={{ marginBottom: 24 }}>
           <div className="form-group" style={{ marginBottom: 0 }}>

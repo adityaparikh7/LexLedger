@@ -44,6 +44,8 @@ export function initDatabase(): void {
       tax_rate REAL DEFAULT 0,
       tax_amount REAL DEFAULT 0,
       total REAL DEFAULT 0,
+      amount_received REAL DEFAULT 0,
+      tds_amount REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT
@@ -82,11 +84,19 @@ export function initDatabase(): void {
 
   // Migration: rename due_date to date_paid
   try {
-    // Attempt to rename the column if it exists as due_date
-    // Since pragma table_info shows column details, we could check, or let the exception handle it.
     db.exec(`ALTER TABLE invoices RENAME COLUMN due_date TO date_paid`);
   } catch (_) {
     // Column might already be renamed or doesn't exist — ignore
+  }
+
+  // Migration: add TDS payment columns
+  const tdsColumns = ['amount_received', 'tds_amount'];
+  for (const col of tdsColumns) {
+    try {
+      db.exec(`ALTER TABLE invoices ADD COLUMN ${col} REAL DEFAULT 0`);
+    } catch (_) {
+      // Column already exists — ignore
+    }
   }
 }
 

@@ -66,7 +66,7 @@ router.get('/:id', (req: Request, res: Response) => {
 // POST create invoice
 router.post('/', (req: Request, res: Response) => {
   try {
-    const { client_id, date, date_paid, notes, tax_rate, line_items, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant } = req.body;
+    const { client_id, date, date_paid, notes, tax_rate, line_items, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant, amount_received, tds_amount } = req.body;
     if (!client_id) return res.status(400).json({ error: 'Client is required' });
     if (!line_items || line_items.length === 0) return res.status(400).json({ error: 'At least one service/line item is required' });
     const invoiceDate = date || new Date().toISOString().split('T')[0];
@@ -82,8 +82,8 @@ router.post('/', (req: Request, res: Response) => {
     const taxAmount = subtotal * (taxRate / 100);
     const total = subtotal + taxAmount;
     const insertInvoice = db.prepare(`
-      INSERT INTO invoices (invoice_number, client_id, date, date_paid, status, notes, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant, subtotal, tax_rate, tax_amount, total)
-      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO invoices (invoice_number, client_id, date, date_paid, status, notes, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant, subtotal, tax_rate, tax_amount, total, amount_received, tds_amount)
+      VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertLineItem = db.prepare(`
       INSERT INTO line_items (invoice_id, description, hours, rate, amount)
@@ -94,7 +94,8 @@ router.post('/', (req: Request, res: Response) => {
         invoiceNumber, client_id, invoiceDate, date_paid || null, notes || null,
         case_name || null, case_party1_type || null, case_plaintiff || null,
         case_party2_type || null, case_defendant || null,
-        subtotal, taxRate, taxAmount, total
+        subtotal, taxRate, taxAmount, total,
+        amount_received || 0, tds_amount || 0
       );
       const invoiceId = result.lastInsertRowid;
       for (const item of line_items as LineItem[]) {
@@ -119,8 +120,7 @@ router.put('/:id', (req: Request, res: Response) => {
   try {
     const existing = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Invoice not found' });
-    if (existing.status === 'paid') return res.status(400).json({ error: 'Cannot edit a paid invoice' });
-    const { client_id, invoice_number, date, date_paid, notes, tax_rate, line_items, created_at, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant } = req.body;
+    const { client_id, invoice_number, date, date_paid, notes, tax_rate, line_items, created_at, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant, amount_received, tds_amount } = req.body;
     const taxRate = tax_rate ?? existing.tax_rate;
     let subtotal = 0;
     if (line_items) {
@@ -138,7 +138,8 @@ router.put('/:id', (req: Request, res: Response) => {
       db.prepare(`
         UPDATE invoices SET client_id = ?, invoice_number = ?, date = ?, date_paid = ?, notes = ?,
         case_name = ?, case_party1_type = ?, case_plaintiff = ?, case_party2_type = ?, case_defendant = ?,
-        subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, created_at = ?, updated_at = datetime('now')
+        subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, amount_received = ?, tds_amount = ?,
+        created_at = ?, updated_at = datetime('now')
         WHERE id = ?
       `).run(
         client_id || existing.client_id,
@@ -152,6 +153,8 @@ router.put('/:id', (req: Request, res: Response) => {
         case_party2_type ?? existing.case_party2_type ?? null,
         case_defendant ?? existing.case_defendant ?? null,
         subtotal, taxRate, taxAmount, total,
+        amount_received ?? existing.amount_received ?? 0,
+        tds_amount ?? existing.tds_amount ?? 0,
         created_at || existing.created_at,
         req.params.id
       );
@@ -180,15 +183,23 @@ router.put('/:id', (req: Request, res: Response) => {
 // PATCH update status
 router.patch('/:id/status', (req: Request, res: Response) => {
   try {
-    const { status } = req.body;
+    const { status, date_paid, amount_received, tds_amount } = req.body;
     const validStatuses = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
     }
-    const result = db.prepare(
-      "UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(status, req.params.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Invoice not found' });
+    if (status === 'paid' && date_paid != null) {
+      // When marking as paid with payment details
+      const result = db.prepare(
+        "UPDATE invoices SET status = ?, date_paid = ?, amount_received = ?, tds_amount = ?, updated_at = datetime('now') WHERE id = ?"
+      ).run(status, date_paid, amount_received || 0, tds_amount || 0, req.params.id);
+      if (result.changes === 0) return res.status(404).json({ error: 'Invoice not found' });
+    } else {
+      const result = db.prepare(
+        "UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?"
+      ).run(status, req.params.id);
+      if (result.changes === 0) return res.status(404).json({ error: 'Invoice not found' });
+    }
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
     res.json(invoice);
   } catch (err: any) {
