@@ -239,7 +239,7 @@ router.put('/:id', (req: Request, res: Response) => {
         }
       }
       if (payments && Array.isArray(payments)) {
-        replacePayments(req.params.id, payments);
+        replacePayments(req.params.id as string, payments);
       }
     });
     transaction();
@@ -270,7 +270,7 @@ router.patch('/:id/status', (req: Request, res: Response) => {
         "UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?"
       ).run(status, req.params.id);
       if (paymentEntries && Array.isArray(paymentEntries) && paymentEntries.length > 0) {
-        replacePayments(req.params.id, paymentEntries);
+        replacePayments(req.params.id as string, paymentEntries);
       }
     });
     transaction();
@@ -291,7 +291,7 @@ router.put('/:id/payments', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'payments array is required' });
     }
     const transaction = db.transaction(() => {
-      replacePayments(req.params.id, paymentEntries);
+      replacePayments(req.params.id as string, paymentEntries);
     });
     transaction();
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);

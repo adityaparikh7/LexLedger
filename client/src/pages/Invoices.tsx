@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   getInvoices, deleteInvoice, updateInvoiceStatus,
   downloadPDF, downloadExcel, downloadExportExcel, sendInvoice, sendReminder,
   type Invoice, type Payment
 } from '../api';
-import { useToast } from '../App';
+import { useToast } from '../context/ToastContext';
 
 interface FormPayment {
   date: string;
@@ -33,25 +33,25 @@ export default function Invoices() {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportPreset, setExportPreset] = useState<'current_fy' | 'previous_fy' | 'custom'>('current_fy');
 
-  const fetchInvoices = async () => {
+  const fetchInvoices = useCallback(async () => {
     try {
       const data = await getInvoices(statusFilter ? { status: statusFilter } : undefined);
       setInvoices(data);
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     } finally {
       setLoading(false);
     }
-  };
-  useEffect(() => { fetchInvoices(); }, [statusFilter]);
+  }, [statusFilter, addToast]);
+  useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this invoice?')) return;
     try {
       await deleteInvoice(id);
       addToast('Invoice deleted', 'success');
       fetchInvoices();
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     }
   };
   const handleStatusChange = async (inv: Invoice, newStatus: string) => {
@@ -68,8 +68,8 @@ export default function Invoices() {
       await updateInvoiceStatus(inv.id, newStatus);
       addToast(`Invoice marked as ${newStatus}`, 'success');
       fetchInvoices();
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     }
   };
 
@@ -121,8 +121,8 @@ export default function Invoices() {
       addToast('Invoice marked as paid', 'success');
       setPaymentModal({ open: false, invoice: null });
       fetchInvoices();
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     } finally {
       setSubmittingPayment(false);
     }
@@ -136,8 +136,8 @@ export default function Invoices() {
         addToast(`Preview: ${result.previewUrl}`, 'info');
       }
       fetchInvoices();
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     }
   };
   const handleRemind = async (id: number) => {
@@ -147,8 +147,8 @@ export default function Invoices() {
       if (result.previewUrl) {
         addToast(`Preview: ${result.previewUrl}`, 'info');
       }
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     }
   };
   const formatDate = (dateStr: string | null) => {
@@ -214,8 +214,8 @@ export default function Invoices() {
       await downloadExportExcel(exportStartDate, exportEndDate);
       addToast('Invoice records exported successfully!', 'success');
       setExportModal(false);
-    } catch (err: any) {
-      addToast(err.message || 'Export failed', 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message || 'Export failed', 'error');
     } finally {
       setExportLoading(false);
     }

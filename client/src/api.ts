@@ -110,9 +110,9 @@ export const getInvoices = (params?: { status?: string; client_id?: string }): P
   return request(`/invoices${qs ? `?${qs}` : ''}`);
 };
 export const getInvoice = (id: number): Promise<Invoice> => request(`/invoices/${id}`);
-export const createInvoice = (data: any): Promise<Invoice> =>
+export const createInvoice = (data: Partial<Invoice>): Promise<Invoice> =>
   request('/invoices', { method: 'POST', body: JSON.stringify(data) });
-export const updateInvoice = (id: number, data: any): Promise<Invoice> =>
+export const updateInvoice = (id: number, data: Partial<Invoice>): Promise<Invoice> =>
   request(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteInvoice = (id: number): Promise<void> =>
   request(`/invoices/${id}`, { method: 'DELETE' });

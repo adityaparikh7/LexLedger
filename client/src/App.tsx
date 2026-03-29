@@ -1,24 +1,12 @@
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
-import { useState, createContext, useContext, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Dashboard from './pages/Dashboard';
 import Invoices from './pages/Invoices';
 import InvoiceForm from './pages/InvoiceForm';
 import Clients from './pages/Clients';
 import Settings from './pages/Settings';
 
-// Toast context
-interface Toast {
-  id: number;
-  message: string;
-  type: 'success' | 'error' | 'info';
-}
-
-interface ToastContextType {
-  addToast: (message: string, type: Toast['type']) => void;
-}
-
-export const ToastContext = createContext<ToastContextType>({ addToast: () => { } });
-export const useToast = () => useContext(ToastContext);
+import { ToastContext, type Toast } from './context/ToastContext';
 
 function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);

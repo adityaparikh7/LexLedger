@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   getClients, createClient, updateClient, deleteClient,
   type Client
 } from '../api';
-import { useToast } from '../App';
+import { useToast } from '../context/ToastContext';
 export default function Clients() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,17 +16,17 @@ export default function Clients() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const fetchClients = async () => {
+  const fetchClients = useCallback(async () => {
     try {
       const data = await getClients();
       setClients(data);
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     } finally {
       setLoading(false);
     }
-  };
-  useEffect(() => { fetchClients(); }, []);
+  }, [addToast]);
+  useEffect(() => { fetchClients(); }, [fetchClients]);
   const openAddModal = () => {
     setEditingClient(null);
     setName('');
@@ -55,8 +55,8 @@ export default function Clients() {
       }
       setShowModal(false);
       fetchClients();
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     }
   };
   const handleDelete = async (id: number) => {
@@ -65,8 +65,8 @@ export default function Clients() {
       await deleteClient(id);
       addToast('Client deleted', 'success');
       fetchClients();
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     }
   };
   const filtered = clients.filter(c =>

@@ -1,30 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getDashboard, type DashboardData, type Invoice, downloadPDF, updateInvoiceStatus } from '../api';
-import { useToast } from '../App';
+import { useToast } from '../context/ToastContext';
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const result = await getDashboard();
       setData(result);
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     } finally {
       setLoading(false);
     }
-  };
-  useEffect(() => { fetchData(); }, []);
+  }, [addToast]);
+  useEffect(() => { fetchData(); }, [fetchData]);
   const handleMarkPaid = async (id: number) => {
     try {
       await updateInvoiceStatus(id, 'paid');
       addToast('Invoice marked as paid', 'success');
       fetchData();
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     }
   };
   if (loading) {

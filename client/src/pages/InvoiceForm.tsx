@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getClients, getInvoice, createInvoice, updateInvoice, createClient,
-  type Client, type LineItem
+  type Client, type LineItem, type Payment
 } from '../api';
-import { useToast } from '../App';
+import { useToast } from '../context/ToastContext';
 interface FormLineItem {
   description: string;
   hours: string;
@@ -73,21 +73,21 @@ export default function InvoiceForm() {
             })));
           }
           if (invoice.payments && invoice.payments.length > 0) {
-            setPayments(invoice.payments.map((p: any) => ({
+            setPayments(invoice.payments.map((p: Payment) => ({
               date: p.date || '',
               amount_received: String(p.amount_received || ''),
               tds_amount: String(p.tds_amount || ''),
             })));
           }
         }
-      } catch (err: any) {
-        addToast(err.message, 'error');
+      } catch (err: unknown) {
+        addToast((err as Error).message, 'error');
       } finally {
         setLoading(false);
       }
     };
     init();
-  }, [id]);
+  }, [id, addToast, isEditing]);
   const addLineItem = () => {
     setLineItems([...lineItems, { description: '', hours: '', rate: '' }]);
   };
@@ -165,8 +165,8 @@ export default function InvoiceForm() {
       setNewClientPhone('');
       setNewClientAddress('');
       setShowClientModal(false);
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     } finally {
       setCreatingClient(false);
     }
@@ -219,8 +219,8 @@ export default function InvoiceForm() {
         addToast('Invoice created!', 'success');
       }
       navigate('/invoices');
-    } catch (err: any) {
-      addToast(err.message, 'error');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
     } finally {
       setSaving(false);
     }
