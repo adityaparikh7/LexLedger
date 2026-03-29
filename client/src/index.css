@@ -384,10 +384,10 @@ tbody td:first-child {
 .btn-outline:hover {
   background: var(--bg-glass-hover);
   border-color: var(--border-active);
-  color: var(--text-primary);
+  color: var(--text-heading);
 }
 .btn-sm {
-  padding: 6px 12px;
+  padding: 10px 12px;
   font-size: 12px;
 }
 .btn-icon {

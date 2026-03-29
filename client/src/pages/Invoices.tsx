@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   getInvoices, deleteInvoice, updateInvoiceStatus,
-  downloadPDF, downloadExcel, sendInvoice, sendReminder,
+  downloadPDF, downloadExcel, downloadExportExcel, sendInvoice, sendReminder,
   type Invoice, type Payment
 } from '../api';
 import { useToast } from '../App';
@@ -25,6 +25,13 @@ export default function Invoices() {
   const [paymentModal, setPaymentModal] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
   const [paymentEntries, setPaymentEntries] = useState<FormPayment[]>([]);
   const [submittingPayment, setSubmittingPayment] = useState(false);
+
+  // Export modal state
+  const [exportModal, setExportModal] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportPreset, setExportPreset] = useState<'current_fy' | 'previous_fy' | 'custom'>('current_fy');
 
   const fetchInvoices = async () => {
     try {
@@ -158,6 +165,62 @@ export default function Invoices() {
     inv.client_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Financial year helpers
+  const getFYDates = (offset: number = 0): { start: string; end: string } => {
+    const now = new Date();
+    let startYear = now.getFullYear();
+    if (now.getMonth() < 3) startYear -= 1; // Jan-Mar belongs to previous FY
+    startYear += offset;
+    const endYear = startYear + 1;
+    return {
+      start: `${startYear}-04-01`,
+      end: `${endYear}-03-31`,
+    };
+  };
+
+  const handleExportOpen = () => {
+    setExportPreset('current_fy');
+    const fy = getFYDates(0);
+    setExportStartDate(fy.start);
+    setExportEndDate(fy.end);
+    setExportModal(true);
+  };
+
+  const handleExportPresetChange = (preset: 'current_fy' | 'previous_fy' | 'custom') => {
+    setExportPreset(preset);
+    if (preset === 'current_fy') {
+      const fy = getFYDates(0);
+      setExportStartDate(fy.start);
+      setExportEndDate(fy.end);
+    } else if (preset === 'previous_fy') {
+      const fy = getFYDates(-1);
+      setExportStartDate(fy.start);
+      setExportEndDate(fy.end);
+    }
+    // 'custom' keeps current values
+  };
+
+  const handleExportDownload = async () => {
+    if (!exportStartDate || !exportEndDate) {
+      addToast('Please select both start and end dates', 'error');
+      return;
+    }
+    if (exportStartDate > exportEndDate) {
+      addToast('Start date must be before end date', 'error');
+      return;
+    }
+    setExportLoading(true);
+    try {
+      await downloadExportExcel(exportStartDate, exportEndDate);
+      addToast('Invoice records exported successfully!', 'success');
+      setExportModal(false);
+    } catch (err: any) {
+      addToast(err.message || 'Export failed', 'error');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   // Payment modal summary calculations
   const modalTotalReceived = paymentEntries.reduce((sum, p) => sum + (parseFloat(p.amount_received) || 0), 0);
   const modalTotalTds = paymentEntries.reduce((sum, p) => sum + (parseFloat(p.tds_amount) || 0), 0);
@@ -200,6 +263,14 @@ export default function Invoices() {
           <option value="overdue">Overdue</option>
           <option value="cancelled">Cancelled</option>
         </select>
+        <button
+          className="btn btn-outline"
+          onClick={handleExportOpen}
+          style={{ marginLeft: 'auto', gap: 6 }}
+          id="export-records-btn"
+        >
+          📊 Export Records
+        </button>
       </div>
       {/* Invoice table */}
       <div className="table-container">
@@ -416,6 +487,115 @@ export default function Invoices() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Export Records Modal */}
+      {exportModal && (
+        <div className="modal-overlay" onClick={() => setExportModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">📊 Export Invoice Records</h3>
+              <button
+                className="btn-icon"
+                onClick={() => setExportModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.6 }}>
+              Download a complete Excel report of all invoices within the selected time period.
+            </p>
+
+            {/* Preset buttons */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              {[
+                { key: 'current_fy' as const, label: 'Current FY' },
+                { key: 'previous_fy' as const, label: 'Previous FY' },
+                { key: 'custom' as const, label: 'Custom Range' },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  className={exportPreset === opt.key ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'}
+                  onClick={() => handleExportPresetChange(opt.key)}
+                  style={{ flex: 1, justifyContent: 'center' }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Date range */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+              <div>
+                <label className="form-label">Start Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={exportStartDate}
+                  onChange={(e) => {
+                    setExportStartDate(e.target.value);
+                    setExportPreset('custom');
+                  }}
+                  id="export-start-date"
+                />
+              </div>
+              <div>
+                <label className="form-label">End Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={exportEndDate}
+                  onChange={(e) => {
+                    setExportEndDate(e.target.value);
+                    setExportPreset('custom');
+                  }}
+                  id="export-end-date"
+                />
+              </div>
+            </div>
+
+            {/* Date range summary */}
+            <div style={{
+              padding: 12,
+              borderRadius: 8,
+              background: 'var(--bg-tertiary, rgba(0,0,0,0.03))',
+              marginBottom: 20,
+              fontSize: 13,
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <span>📅</span>
+              <span>
+                {exportStartDate && exportEndDate
+                  ? `${formatDate(exportStartDate)} — ${formatDate(exportEndDate)}`
+                  : 'Select a date range'}
+              </span>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setExportModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleExportDownload}
+                disabled={exportLoading || !exportStartDate || !exportEndDate}
+                id="export-download-btn"
+              >
+                {exportLoading ? '⏳ Generating...' : '⬇️ Download Excel'}
+              </button>
+            </div>
           </div>
         </div>
       )}
