@@ -139,6 +139,15 @@ export const downloadExcel = async (id: number, invoiceNumber: string) => {
   a.click();
   URL.revokeObjectURL(url);
 };
+export const downloadExportExcel = async (startDate: string, endDate: string) => {
+  const blob = await request(`/invoices/export?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Invoice_Records_${startDate}_to_${endDate}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 // Email
 export const sendInvoice = (id: number): Promise<{ message: string; previewUrl?: string }> =>
   request(`/invoices/${id}/send`, { method: 'POST' });

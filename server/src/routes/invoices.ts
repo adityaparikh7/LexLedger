@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import db, { generateInvoiceNumber } from '../db';
 import { generatePDF } from '../services/pdfGenerator';
 import { generateExcel } from '../services/excelGenerator';
+import { generateExportExcel } from '../services/exportGenerator';
 import { sendInvoiceEmail, sendReminderEmail } from '../services/emailService';
 import path from 'path';
 import fs from 'fs';
@@ -71,6 +72,43 @@ router.get('/', (req: Request, res: Response) => {
     query += ' ORDER BY i.created_at DESC';
     const invoices = db.prepare(query).all(...params);
     res.json(invoices);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// GET export invoices as Excel for a date range
+router.get('/export', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: 'startDate and endDate are required' });
+    }
+
+    // Query invoices in the date range
+    const invoices = db.prepare(`
+      SELECT i.*, c.name as client_name, c.email as client_email, c.address as client_address, c.phone as client_phone
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.date >= ? AND i.date <= ?
+      ORDER BY i.date ASC
+    `).all(startDate, endDate) as any[];
+
+    // Enrich each invoice with line_items and payments
+    const enriched = invoices.map((inv: any) => {
+      const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(inv.id) as any[];
+      const payments = db.prepare('SELECT * FROM payments WHERE invoice_id = ? ORDER BY date ASC').all(inv.id) as any[];
+      return { ...inv, line_items: lineItems, payments };
+    });
+
+    const excelBuffer = await generateExportExcel(enriched);
+
+    const safeStart = (startDate as string).replace(/[\\/]/g, '-');
+    const safeEnd = (endDate as string).replace(/[\\/]/g, '-');
+    const fileName = `Invoice_Records_${safeStart}_to_${safeEnd}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(excelBuffer);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
