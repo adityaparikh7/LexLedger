@@ -80,6 +80,24 @@ export function initDatabase(): void {
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS firm_profile (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      firm_name TEXT NOT NULL DEFAULT '',
+      firm_address TEXT NOT NULL DEFAULT '',
+      firm_phone TEXT NOT NULL DEFAULT '',
+      firm_email TEXT NOT NULL DEFAULT '',
+      bank_account_name TEXT NOT NULL DEFAULT '',
+      bank_name TEXT NOT NULL DEFAULT '',
+      bank_account_number TEXT NOT NULL DEFAULT '',
+      bank_ifsc TEXT NOT NULL DEFAULT '',
+      pan_number TEXT NOT NULL DEFAULT '',
+      signature_name TEXT NOT NULL DEFAULT '',
+      signature_full TEXT NOT NULL DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    INSERT OR IGNORE INTO firm_profile (id) VALUES (1);
   `);
 
   // Migration: add case detail columns to existing databases

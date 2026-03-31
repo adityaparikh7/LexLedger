@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { getFirmProfile } from '../routes/settings';
 
 interface Invoice {
   invoice_number: string;
@@ -32,6 +33,9 @@ export async function generateExcel(invoice: Invoice, lineItems: LineItem[]): Pr
   workbook.creator = 'LegalBill';
   workbook.created = new Date();
 
+  // Get firm profile for dynamic details
+  const profile = getFirmProfile();
+
   const sheet = workbook.addWorksheet('Memo of Fees', {
     properties: { defaultColWidth: 18 },
   });
@@ -61,15 +65,23 @@ export async function generateExcel(invoice: Invoice, lineItems: LineItem[]): Pr
   };
 
   // ── HEADER ──
-  const r1 = addRow(['Advocate Sandeep H. Parikh', null, null], boldFont);
+  const r1 = addRow([profile.firm_name || 'Firm Name', null, null], boldFont);
   merge(r1.number);
   r1.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
 
-  const r2 = addRow(['11/E, Examiner Press Building, Dalal Street, Fort, Mumbai - 400 001.', null, null]);
-  merge(r2.number);
+  if (profile.firm_address) {
+    const r2 = addRow([profile.firm_address, null, null]);
+    merge(r2.number);
+  }
 
-  const r3 = addRow(['(M) +91 9820122460, E-mail : adv.sparikh@gmail.com', null, null]);
-  merge(r3.number);
+  // Build contact line
+  const contactParts: string[] = [];
+  if (profile.firm_phone) contactParts.push(`(M) ${profile.firm_phone}`);
+  if (profile.firm_email) contactParts.push(`E-mail : ${profile.firm_email}`);
+  if (contactParts.length > 0) {
+    const r3 = addRow([contactParts.join(', '), null, null]);
+    merge(r3.number);
+  }
 
   sheet.addRow([]);
 
@@ -162,13 +174,13 @@ export async function generateExcel(invoice: Invoice, lineItems: LineItem[]): Pr
   sheet.addRow([]);
 
   // ── BANK DETAILS ──
-  const bankLines = [
-    'Bank Account Name : Sandeep Parikh',
-    'Bank Name : ICICI Bank, Prabhadevi Branch, Mumbai',
-    'Account Number : 005701061521',
-    'IFSC : ICICI0000057',
-    'PAN No. : AFFPP 3549B',
-  ];
+  const bankLines: string[] = [];
+  if (profile.bank_account_name) bankLines.push(`Bank Account Name : ${profile.bank_account_name}`);
+  if (profile.bank_name) bankLines.push(`Bank Name : ${profile.bank_name}`);
+  if (profile.bank_account_number) bankLines.push(`Account Number : ${profile.bank_account_number}`);
+  if (profile.bank_ifsc) bankLines.push(`IFSC : ${profile.bank_ifsc}`);
+  if (profile.pan_number) bankLines.push(`PAN No. : ${profile.pan_number}`);
+
   for (const line of bankLines) {
     const r = addRow([line, null, null]);
     merge(r.number);
@@ -180,10 +192,15 @@ export async function generateExcel(invoice: Invoice, lineItems: LineItem[]): Pr
   const rRegards = addRow(['Regards,', null, null]);
   merge(rRegards.number);
   sheet.addRow([]);
-  const rSig1 = addRow(['SParikh', null, null]);
-  merge(rSig1.number);
-  const rSig2 = addRow(['Sandeep H. Parikh, Advocate', null, null]);
-  merge(rSig2.number);
+
+  if (profile.signature_name) {
+    const rSig1 = addRow([profile.signature_name, null, null]);
+    merge(rSig1.number);
+  }
+  if (profile.signature_full) {
+    const rSig2 = addRow([profile.signature_full, null, null]);
+    merge(rSig2.number);
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

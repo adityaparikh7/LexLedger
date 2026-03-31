@@ -328,8 +328,8 @@ export default function Invoices() {
                     <td>
                       <div className="btn-group">
                         <button className="btn-icon" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>✍️</button>
-                        <button className="btn-icon" title="PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}>PDF</button>
-                        <button className="btn-icon" title="Excel" onClick={() => downloadExcel(inv.id, inv.invoice_number)}>Excel</button>
+                        <button className="btn-icon" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}>🧾</button>
+                        <button className="btn-icon" title="Download Excel" onClick={() => downloadExcel(inv.id, inv.invoice_number)}>🗂️</button>
                         <button className="btn-icon" title="Send Email" onClick={() => handleSend(inv.id)}>✉️</button>
                         {(inv.status === 'sent' || inv.status === 'overdue') && (
                         <button className="btn-icon" title="Send Reminder" onClick={() => handleRemind(inv.id)}>🔔</button>

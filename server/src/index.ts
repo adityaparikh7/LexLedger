@@ -6,6 +6,7 @@ import { initDatabase } from './db';
 import clientsRouter from './routes/clients';
 import invoicesRouter from './routes/invoices';
 import dashboardRouter from './routes/dashboard';
+import settingsRouter from './routes/settings';
 // Load .env: try userData path (Electron) first, then project root
 if (process.env.ELECTRON === '1' && process.env.COPIES_PATH) {
   const userDataEnvPath = path.join(path.dirname(process.env.COPIES_PATH), '.env');
@@ -22,6 +23,7 @@ app.use(express.json());
 app.use('/api/clients', clientsRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/settings', settingsRouter);
 // Serve React build in production (not needed in Electron — it loads files directly)
 if (!isElectron) {
   const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
