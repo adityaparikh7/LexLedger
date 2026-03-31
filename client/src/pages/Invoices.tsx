@@ -6,6 +6,7 @@ import {
   type Invoice, type Payment
 } from '../api';
 import { useToast } from '../context/ToastContext';
+import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, BarChart2, X, Loader2, Check, Calendar, Download, FileDown } from 'lucide-react';
 
 interface FormPayment {
   date: string;
@@ -244,13 +245,16 @@ export default function Invoices() {
       </div>
       {/* Filter bar */}
       <div className="filter-bar" style={{ marginBottom: 24 }}>
-        <input
-          className="form-input"
-          placeholder="🔍 Search invoices..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          style={{ width: 280 }}
-        />
+        <div style={{ position: 'relative' }}>
+          <Search size={16} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-muted)' }} />
+          <input
+            className="form-input"
+            placeholder="Search invoices..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ width: 280, paddingLeft: 36 }}
+          />
+        </div>
         <select
           className="form-select"
           value={statusFilter}
@@ -269,7 +273,7 @@ export default function Invoices() {
           style={{ marginLeft: 'auto', gap: 6 }}
           id="export-records-btn"
         >
-          📊 Export Records
+          <BarChart2 size={16} /> Export Records
         </button>
       </div>
       {/* Invoice table */}
@@ -287,7 +291,7 @@ export default function Invoices() {
                 <th>TDS</th>
                 <th>Balance</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th className="sticky-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -325,16 +329,28 @@ export default function Invoices() {
                         <option value="cancelled">Cancelled</option>
                       </select>
                     </td>
-                    <td>
+                    <td className="sticky-right">
                       <div className="btn-group">
-                        <button className="btn-icon" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>✍️</button>
-                        <button className="btn-icon" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}>🧾</button>
-                        <button className="btn-icon" title="Download Excel" onClick={() => downloadExcel(inv.id, inv.invoice_number)}>🗂️</button>
-                        <button className="btn-icon" title="Send Email" onClick={() => handleSend(inv.id)}>✉️</button>
+                        <button className="btn-icon btn-icon-blue" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
+                          <Edit2 size={18} />
+                        </button>
+                        <button className="btn-icon btn-icon-green" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}>
+                          <FileDown size={18} />
+                        </button>
+                        <button className="btn-icon btn-icon-green" title="Download Excel" onClick={() => downloadExcel(inv.id, inv.invoice_number)}>
+                          <FileSpreadsheet size={18} />
+                        </button>
+                        <button className="btn-icon btn-icon-amber" title="Send via Email" onClick={() => handleSend(inv.id)}>
+                          <Send size={18} />
+                        </button>
                         {(inv.status === 'sent' || inv.status === 'overdue') && (
-                        <button className="btn-icon" title="Send Reminder" onClick={() => handleRemind(inv.id)}>🔔</button>
+                        <button className="btn-icon btn-icon-amber" title="Send Reminder" onClick={() => handleRemind(inv.id)}>
+                          <Bell size={18} />
+                        </button>
                       )}
-                        <button className="btn-icon" title="Delete" onClick={() => handleDelete(inv.id)} style={{ color: 'var(--accent-red)' }}>🗑️</button>
+                        <button className="btn-icon btn-icon-red" title="Delete" onClick={() => handleDelete(inv.id)}>
+                          <Trash2 size={18} style={{ color: 'var(--accent-red)' }} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -344,7 +360,7 @@ export default function Invoices() {
           </table>
         ) : (
           <div className="empty-state">
-            <div className="empty-icon">📄</div>
+            <div className="empty-icon"><FileText size={48} /></div>
             <div className="empty-text">No invoices found</div>
             <div className="empty-subtext">
               {statusFilter ? 'Try changing your filter' : 'Create your first invoice to get started'}
@@ -362,7 +378,7 @@ export default function Invoices() {
               <button
                 className="btn-icon"
                 onClick={() => setPaymentModal({ open: false, invoice: null })}>
-                ✕
+                <X size={20} />
               </button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
@@ -439,7 +455,7 @@ export default function Invoices() {
                           onClick={() => removePaymentEntry(idx)}
                           style={{ color: 'var(--accent-red)', padding: 4 }}
                           title="Remove">
-                          ✕
+                          <X size={16} />
                         </button>
                       )}
                     </div>
@@ -483,7 +499,7 @@ export default function Invoices() {
                   type="submit"
                   className="btn btn-primary"
                   disabled={submittingPayment}>
-                  {submittingPayment ? '⏳ Saving...' : '✅ Mark as Paid'}
+                  {submittingPayment ? <><Loader2 size={16} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 16, height: 16 }} /> Saving...</> : <><Check size={16} /> Mark as Paid</>}
                 </button>
               </div>
             </form>
@@ -496,12 +512,12 @@ export default function Invoices() {
         <div className="modal-overlay" onClick={() => setExportModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div className="modal-header">
-              <h3 className="modal-title">📊 Export Invoice Records</h3>
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><BarChart2 size={20} /> Export Invoice Records</h3>
               <button
                 className="btn-icon"
                 onClick={() => setExportModal(false)}
               >
-                ✕
+                <X size={20} />
               </button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.6 }}>
@@ -569,7 +585,7 @@ export default function Invoices() {
               alignItems: 'center',
               gap: 8,
             }}>
-              <span>📅</span>
+              <Calendar size={16} />
               <span>
                 {exportStartDate && exportEndDate
                   ? `${formatDate(exportStartDate)} — ${formatDate(exportEndDate)}`
@@ -593,7 +609,7 @@ export default function Invoices() {
                 disabled={exportLoading || !exportStartDate || !exportEndDate}
                 id="export-download-btn"
               >
-                {exportLoading ? '⏳ Generating...' : '⬇️ Download Excel'}
+                {exportLoading ? <><Loader2 size={16} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 16, height: 16 }} /> Generating...</> : <><Download size={16} /> Download Excel</>}
               </button>
             </div>
           </div>

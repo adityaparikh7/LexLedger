@@ -306,6 +306,38 @@ tbody td:first-child {
   color: var(--text-primary);
   font-weight: 500;
 }
+
+/* Sticky Column */
+th.sticky-right,
+td.sticky-right {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+}
+td.sticky-right {
+  background: var(--bg-card);
+}
+th.sticky-right {
+  /* Opaque approximation to prevent scrolling text from bleeding through */
+  background: #fafafa;
+  z-index: 2;
+}
+tbody tr:hover td.sticky-right {
+  /* Match the row hover effect which is bg-glass-hover */
+  background: #f7f7f7; 
+}
+th.sticky-right::before,
+td.sticky-right::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 4px;
+  height: 100%;
+  box-shadow: inset -2px 0 4px -2px rgba(0,0,0,0.1);
+  pointer-events: none;
+}
+
 /* ========== Status Badges ========== */
 .badge {
   display: inline-flex;
@@ -407,6 +439,27 @@ tbody td:first-child {
   background: var(--bg-glass-hover);
   color: var(--text-primary);
   border-color: var(--border-active);
+}
+/* Action-specific hover states */
+.btn-icon-blue:hover {
+  background: rgba(0, 72, 255, 0.1);
+  color: var(--accent-blue);
+  border-color: rgba(0, 72, 255, 0.3);
+}
+.btn-icon-green:hover {
+  background: rgba(46, 94, 78, 0.1);
+  color: var(--accent-green);
+  border-color: rgba(46, 94, 78, 0.3);
+}
+.btn-icon-amber:hover {
+  background: rgba(224, 122, 95, 0.1);
+  color: var(--accent-amber);
+  border-color: rgba(224, 122, 95, 0.3);
+}
+.btn-icon-red:hover {
+  background: rgba(224, 122, 95, 0.15);
+  color: var(--accent-red);
+  border-color: rgba(224, 122, 95, 0.4);
 }
 .btn-group {
   display: flex;

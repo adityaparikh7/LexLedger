@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getDashboard, type DashboardData, type Invoice, downloadPDF, updateInvoiceStatus } from '../api';
 import { useToast } from '../context/ToastContext';
+import { Banknote, ClipboardList, AlertTriangle, Users, Edit2, Download, CheckCircle, FileText } from 'lucide-react';
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,22 +53,22 @@ export default function Dashboard() {
       {/* Stats Grid */}
       <div className="stats-grid">
         <div className="stat-card blue">
-          <div className="stat-icon">💰</div>
+          <div className="stat-icon"><Banknote size={28} /></div>
           <div className="stat-value">₹{stats?.total_paid?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '0.00'}</div>
           <div className="stat-label">Total Received</div>
         </div>
         <div className="stat-card amber">
-          <div className="stat-icon">📋</div>
+          <div className="stat-icon"><ClipboardList size={28} /></div>
           <div className="stat-value">₹{stats?.total_outstanding?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '0.00'}</div>
           <div className="stat-label">Outstanding</div>
         </div>
         <div className="stat-card red">
-          <div className="stat-icon">⚠️</div>
+          <div className="stat-icon"><AlertTriangle size={28} /></div>
           <div className="stat-value">{stats?.overdue_count || 0}</div>
           <div className="stat-label">Overdue</div>
         </div>
         <div className="stat-card green">
-          <div className="stat-icon">👥</div>
+          <div className="stat-icon"><Users size={28} /></div>
           <div className="stat-value">{data?.totalClients || 0}</div>
           <div className="stat-label">Clients</div>
         </div>
@@ -121,10 +122,10 @@ export default function Dashboard() {
                   <td><span className={`badge ${inv.status}`}>{inv.status}</span></td>
                   <td>
                     <div className="btn-group">
-                      <button className="btn-icon" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>✏️</button>
-                      <button className="btn-icon" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}>📥</button>
+                      <button className="btn-icon btn-icon-blue" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}><Edit2 size={16} /></button>
+                      <button className="btn-icon btn-icon-green" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}><Download size={16} /></button>
                       {inv.status !== 'paid' && (
-                        <button className="btn-icon" title="Mark Paid" onClick={() => handleMarkPaid(inv.id)}>✅</button>
+                        <button className="btn-icon btn-icon-amber" title="Mark Paid" onClick={() => handleMarkPaid(inv.id)}><CheckCircle size={16} /></button>
                       )}
                     </div>
                   </td>
@@ -134,7 +135,7 @@ export default function Dashboard() {
           </table>
         ) : (
           <div className="empty-state">
-            <div className="empty-icon">📄</div>
+            <div className="empty-icon"><FileText size={48} /></div>
             <div className="empty-text">No invoices yet</div>
             <div className="empty-subtext">Create your first invoice to get started</div>
           </div>

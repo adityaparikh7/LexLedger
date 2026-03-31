@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { getFirmProfile, updateFirmProfile, type FirmProfile } from '../api';
 import { ToastContext } from '../context/ToastContext';
+import { Hand, Landmark, Building, PenTool, Mail, Lightbulb, FileText, Info, Save, Loader2 } from 'lucide-react';
 
 const EMPTY_PROFILE: FirmProfile = {
   firm_name: '',
@@ -82,7 +83,7 @@ export default function Settings() {
             disabled={saving || !hasChanges}
             style={{ opacity: saving || !hasChanges ? 0.5 : 1 }}
           >
-            {saving ? '⏳ Saving…' : '💾 Save Profile'}
+            {saving ? <><Loader2 size={16} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 16, height: 16 }} /> Saving…</> : <><Save size={16} /> Save Profile</>}
           </button>
         </div>
       </div>
@@ -95,7 +96,7 @@ export default function Settings() {
           {isProfileEmpty && (
             <div className="card" style={{ marginBottom: 24, borderColor: 'var(--accent-green)', borderWidth: 2 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                <span style={{ fontSize: 28 }}>👋</span>
+                <Hand size={28} color="var(--accent-green)" />
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--text-heading)' }}>Welcome! Set up your firm profile</div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
@@ -109,7 +110,7 @@ export default function Settings() {
           {/* Firm Identity */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="settings-section" style={{ marginBottom: 0 }}>
-              <h3 className="section-title">🏛️ Firm Identity</h3>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Landmark size={20} /> Firm Identity</h3>
               <div style={{ display: 'grid', gap: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Firm / Advocate Name</label>
@@ -160,7 +161,7 @@ export default function Settings() {
           {/* Bank Details */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="settings-section" style={{ marginBottom: 0 }}>
-              <h3 className="section-title">🏦 Bank Details</h3>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Building size={20} /> Bank Details</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: -8 }}>
                 Displayed on invoice memos for payment instructions.
               </p>
@@ -226,7 +227,7 @@ export default function Settings() {
           {/* Signature */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="settings-section" style={{ marginBottom: 0 }}>
-              <h3 className="section-title">✍️ Signature</h3>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><PenTool size={20} /> Signature</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: -8 }}>
                 Appears at the bottom of your invoice memos.
               </p>
@@ -264,7 +265,7 @@ export default function Settings() {
           {/* Email Configuration */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="settings-section" style={{ marginBottom: 0 }}>
-              <h3 className="section-title">📧 Email Configuration</h3>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Mail size={20} /> Email Configuration</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: -8 }}>
                 Configure your SMTP settings to send invoices and reminders via email.
               </p>
@@ -315,7 +316,7 @@ export default function Settings() {
                 </div>
               </div>
               <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 12 }}>
-                💡 If no SMTP is configured, emails are sent to <a href="https://ethereal.email" target="_blank" rel="noopener" style={{ color: 'var(--accent-blue)' }}>Ethereal</a> test accounts for preview.
+                <Lightbulb size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} /> If no SMTP is configured, emails are sent to <a href="https://ethereal.email" target="_blank" rel="noopener" style={{ color: 'var(--accent-blue)' }}>Ethereal</a> test accounts for preview.
               </p>
             </div>
           </div>
@@ -323,7 +324,7 @@ export default function Settings() {
           {/* Invoice Settings */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="settings-section" style={{ marginBottom: 0 }}>
-              <h3 className="section-title">📄 Invoice Settings</h3>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><FileText size={20} /> Invoice Settings</h3>
               <div style={{ display: 'grid', gap: 16 }}>
                 <div style={{
                   display: 'flex',
@@ -377,9 +378,9 @@ export default function Settings() {
           {/* About */}
           <div className="card">
             <div className="settings-section" style={{ marginBottom: 0 }}>
-              <h3 className="section-title">ℹ️ About</h3>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Info size={20} /> About</h3>
               <div style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.8 }}>
-                <p><strong>LexLedger</strong> v1.1.0</p>
+                <p><strong>LexLedger</strong> v1.2.0</p>
                 <p>A professional invoicing and billing tool designed for legal practices.</p>
                 <div style={{ marginTop: 12 }}>
                   <strong>Key Features:</strong>
