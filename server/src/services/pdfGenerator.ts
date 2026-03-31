@@ -1,6 +1,7 @@
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
+import { getFirmProfile } from '../routes/settings';
 
 /** Normalise any stored date string to dd/mm/yyyy */
 function formatDate(raw: string | null | undefined): string {
@@ -29,6 +30,24 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
   // Read and populate the HTML template
   let html = fs.readFileSync(TEMPLATE_PATH, 'utf-8');
 
+  // Get firm profile for dynamic details
+  const profile = getFirmProfile();
+
+  // Build firm contact line
+  const contactParts: string[] = [];
+  if (profile.firm_phone) contactParts.push(`(M) ${profile.firm_phone}`);
+  if (profile.firm_email) contactParts.push(`E-mail : ${profile.firm_email}`);
+  const firmContact = contactParts.join(', ');
+
+  // Build bank details HTML
+  const bankLines: string[] = [];
+  if (profile.bank_account_name) bankLines.push(`Bank Account Name : ${profile.bank_account_name}`);
+  if (profile.bank_name) bankLines.push(`Bank Name : ${profile.bank_name}`);
+  if (profile.bank_account_number) bankLines.push(`Account Number : ${profile.bank_account_number}`);
+  if (profile.bank_ifsc) bankLines.push(`IFSC : ${profile.bank_ifsc}`);
+  if (profile.pan_number) bankLines.push(`PAN No. : ${profile.pan_number}`);
+  const bankDetailsHtml = bankLines.join('<br/>');
+
   // Build line item rows
   const lineItemsHtml = lineItems
     .map(
@@ -56,6 +75,12 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
 
   // Replace placeholders
   html = html
+    .replace('{{firm_name}}', profile.firm_name)
+    .replace('{{firm_address}}', profile.firm_address)
+    .replace('{{firm_contact}}', firmContact)
+    .replace('{{bank_details}}', bankDetailsHtml)
+    .replace('{{signature_name}}', profile.signature_name)
+    .replace('{{signature_full}}', profile.signature_full)
     .replace('{{client_name}}', invoice.client_name ?? '')
     .replace('{{invoice_number}}', invoice.invoice_number ?? '')
     .replace('{{date}}', formatDate(invoice.date))

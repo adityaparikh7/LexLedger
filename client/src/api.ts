@@ -73,6 +73,23 @@ export interface DashboardData {
   recentInvoices: Invoice[];
   totalClients: number;
 }
+export interface FirmProfile {
+  firm_name: string;
+  firm_address: string;
+  firm_phone: string;
+  firm_email: string;
+  bank_account_name: string;
+  bank_name: string;
+  bank_account_number: string;
+  bank_ifsc: string;
+  pan_number: string;
+  signature_name: string;
+  signature_full: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_user: string;
+  smtp_pass: string;
+}
 async function request(url: string, options?: RequestInit) {
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
@@ -155,3 +172,7 @@ export const sendInvoice = (id: number): Promise<{ message: string; previewUrl?:
   request(`/invoices/${id}/send`, { method: 'POST' });
 export const sendReminder = (id: number): Promise<{ message: string; previewUrl?: string }> =>
   request(`/invoices/${id}/remind`, { method: 'POST' });
+// Settings — Firm Profile
+export const getFirmProfile = (): Promise<FirmProfile> => request('/settings/firm-profile');
+export const updateFirmProfile = (data: Partial<FirmProfile>): Promise<FirmProfile> =>
+  request('/settings/firm-profile', { method: 'PUT', body: JSON.stringify(data) });

@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { getFirmProfile } from '../routes/settings';
 interface Invoice {
   invoice_number: string;
   client_name: string;
@@ -9,7 +10,12 @@ interface Invoice {
   status: string;
 }
 async function getTransporter() {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+  const profile = getFirmProfile();
+  const SMTP_HOST = profile.smtp_host || process.env.SMTP_HOST;
+  const SMTP_PORT = profile.smtp_port ? profile.smtp_port.toString() : process.env.SMTP_PORT;
+  const SMTP_USER = profile.smtp_user || process.env.SMTP_USER;
+  const SMTP_PASS = profile.smtp_pass || process.env.SMTP_PASS;
+
   if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
     return nodemailer.createTransport({
       host: SMTP_HOST,
@@ -33,9 +39,11 @@ export async function sendInvoiceEmail(
   pdfBuffer: Buffer
 ): Promise<{ messageId: string; previewUrl?: string | false }> {
   const transporter = await getTransporter();
-  const fromAddress = process.env.SMTP_FROM || 'billing@legalfirm.com';
+  const profile = getFirmProfile();
+  const fromAddress = profile.firm_email || process.env.SMTP_FROM || 'billing@legalfirm.com';
+  const firmName = profile.firm_name || 'Legal Billing';
   const info = await transporter.sendMail({
-    from: `"Legal Billing" <${fromAddress}>`,
+    from: `"${firmName}" <${fromAddress}>`,
     to: invoice.client_email,
     subject: `Invoice ${invoice.invoice_number} - ₹${invoice.total.toFixed(2)}`,
     html: `
@@ -83,9 +91,11 @@ export async function sendReminderEmail(
   invoice: Invoice
 ): Promise<{ messageId: string; previewUrl?: string | false }> {
   const transporter = await getTransporter();
-  const fromAddress = process.env.SMTP_FROM || 'billing@legalfirm.com';
+  const profile = getFirmProfile();
+  const fromAddress = profile.firm_email || process.env.SMTP_FROM || 'billing@legalfirm.com';
+  const firmName = profile.firm_name || 'Legal Billing';
   const info = await transporter.sendMail({
-    from: `"Legal Billing" <${fromAddress}>`,
+    from: `"${firmName}" <${fromAddress}>`,
     to: invoice.client_email,
     subject: `Payment Reminder: Invoice ${invoice.invoice_number} - ₹${invoice.total.toFixed(2)}`,
     html: `
