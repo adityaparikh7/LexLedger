@@ -167,6 +167,23 @@ export const downloadExportExcel = async (startDate: string, endDate: string) =>
   a.click();
   URL.revokeObjectURL(url);
 };
+export const downloadBulkPDFs = async (clientId: number, status: string, clientName: string) => {
+  const statusParam = status || 'all';
+  const res = await fetch(`${API_BASE}/invoices/export-pdfs?client_id=${clientId}&status=${statusParam}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Export failed' }));
+    throw new Error(err.error || 'Export failed');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeName = clientName.replace(/[^a-zA-Z0-9_\- ]/g, '');
+  const statusLabel = statusParam !== 'all' ? `_${statusParam}` : '';
+  a.download = `${safeName}${statusLabel}_Invoices.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 // Email
 export const sendInvoice = (id: number): Promise<{ message: string; previewUrl?: string }> =>
   request(`/invoices/${id}/send`, { method: 'POST' });

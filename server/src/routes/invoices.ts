@@ -4,6 +4,7 @@ import { generatePDF } from '../services/pdfGenerator';
 import { generateExcel } from '../services/excelGenerator';
 import { generateExportExcel } from '../services/exportGenerator';
 import { sendInvoiceEmail, sendReminderEmail } from '../services/emailService';
+import archiver from 'archiver';
 import path from 'path';
 import fs from 'fs';
 const router = Router();
@@ -113,6 +114,68 @@ router.get('/export', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error exporting invoices:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+// GET export invoices as PDFs (ZIP) for a client
+router.get('/export-pdfs', async (req: Request, res: Response) => {
+  try {
+    const { client_id, status } = req.query;
+    if (!client_id) {
+      return res.status(400).json({ error: 'client_id is required' });
+    }
+
+    // Build query with optional status filter
+    let query = `
+      SELECT i.*, c.name as client_name, c.email as client_email, c.address as client_address, c.phone as client_phone
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.client_id = ?
+    `;
+    const params: any[] = [client_id];
+
+    if (status && status !== 'all') {
+      query += ' AND i.status = ?';
+      params.push(status);
+    }
+    query += ' ORDER BY i.date ASC';
+
+    const invoices = db.prepare(query).all(...params) as any[];
+
+    if (invoices.length === 0) {
+      return res.status(404).json({ error: 'No invoices found for the selected criteria' });
+    }
+
+    // Get the client name for the ZIP filename
+    const clientName = (invoices[0].client_name || 'Client').replace(/[^a-zA-Z0-9_\- ]/g, '');
+    const statusLabel = status && status !== 'all' ? `_${status}` : '';
+    const zipFileName = `${clientName}${statusLabel}_Invoices.zip`;
+
+    // Set response headers for ZIP download
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
+
+    // Create archive and pipe to response
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    archive.on('error', (err: Error) => {
+      throw err;
+    });
+    archive.pipe(res);
+
+    // Generate PDF for each invoice and append to archive
+    for (const invoice of invoices) {
+      const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(invoice.id) as any[];
+      const pdfBuffer = await generatePDF(invoice, lineItems);
+      const safeInvoiceNumber = invoice.invoice_number.replace(/[\/\\]/g, '-');
+      archive.append(pdfBuffer, { name: `${safeInvoiceNumber}.pdf` });
+    }
+
+    await archive.finalize();
+  } catch (err: any) {
+    console.error('Error exporting bulk PDFs:', err);
+    // Only send error if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate PDF export' });
+    }
   }
 });
 // GET single invoice with line items
