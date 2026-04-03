@@ -337,23 +337,44 @@ export default function InvoiceForm() {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">First Party Type</label>
-              <select
-                className="form-select"
-                value={caseParty1Type}
-                onChange={(e) => setCaseParty1Type(e.target.value)}>
-                <option value="None">None</option>
-                <option value="Plaintiff">Plaintiff</option>
-                <option value="Appellant">Appellant</option>
-                <option value="Applicant">Applicant</option>
-                <option value="Petitioner">Petitioner</option>
-              </select>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select
+                  className="form-select"
+                  value={['None', 'Plaintiff', 'Appellant', 'Applicant', 'Petitioner', 'Claimant'].includes(caseParty1Type) ? caseParty1Type : 'Custom'}
+                  onChange={(e) => {
+                    if (e.target.value === 'Custom') {
+                      setCaseParty1Type('');
+                    } else {
+                      setCaseParty1Type(e.target.value);
+                    }
+                  }}
+                  style={{ flex: ['None', 'Plaintiff', 'Appellant', 'Applicant', 'Petitioner', 'Claimant'].includes(caseParty1Type) ? 1 : '0 0 150px' }}>
+                  <option value="None">None</option>
+                  <option value="Plaintiff">Plaintiff</option>
+                  <option value="Appellant">Appellant</option>
+                  <option value="Applicant">Applicant</option>
+                  <option value="Petitioner">Petitioner</option>
+                  <option value="Claimant">Claimant</option>
+                  <option value="Custom">Custom...</option>
+                </select>
+                {!['None', 'Plaintiff', 'Appellant', 'Applicant', 'Petitioner', 'Claimant'].includes(caseParty1Type) && (
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Enter custom type"
+                    value={caseParty1Type}
+                    onChange={(e) => setCaseParty1Type(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                )}
+              </div>
             </div>
             {caseParty1Type !== 'None' && (
               <div className="form-group" style={{ flex: 2 }}>
-                <label className="form-label">{caseParty1Type} Details</label>
+                <label className="form-label">{caseParty1Type || 'Party'} Details</label>
                 <textarea
                   className="form-textarea"
-                  placeholder={`Name(s) and details of the ${caseParty1Type.toLowerCase()}(s)...`}
+                  placeholder={`Name(s) and details of the ${(caseParty1Type || 'party').toLowerCase()}(s)...`}
                   value={casePlaintiff}
                   onChange={(e) => setCasePlaintiff(e.target.value)}
                   rows={2}
@@ -364,21 +385,41 @@ export default function InvoiceForm() {
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Second Party Type</label>
-              <select
-                className="form-select"
-                value={caseParty2Type}
-                onChange={(e) => setCaseParty2Type(e.target.value)}>
-                <option value="None">None</option>
-                <option value="Defendant">Defendant</option>
-                <option value="Respondent">Respondent</option>
-              </select>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select
+                  className="form-select"
+                  value={['None', 'Defendant', 'Respondent'].includes(caseParty2Type) ? caseParty2Type : 'Custom'}
+                  onChange={(e) => {
+                    if (e.target.value === 'Custom') {
+                      setCaseParty2Type('');
+                    } else {
+                      setCaseParty2Type(e.target.value);
+                    }
+                  }}
+                  style={{ flex: ['None', 'Defendant', 'Respondent'].includes(caseParty2Type) ? 1 : '0 0 150px' }}>
+                  <option value="None">None</option>
+                  <option value="Defendant">Defendant</option>
+                  <option value="Respondent">Respondent</option>
+                  <option value="Custom">Custom...</option>
+                </select>
+                {!['None', 'Defendant', 'Respondent'].includes(caseParty2Type) && (
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Enter custom type"
+                    value={caseParty2Type}
+                    onChange={(e) => setCaseParty2Type(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                )}
+              </div>
             </div>
             {caseParty2Type !== 'None' && (
               <div className="form-group" style={{ flex: 2 }}>
-                <label className="form-label">{caseParty2Type} Details</label>
+                <label className="form-label">{caseParty2Type || 'Party'} Details</label>
                 <textarea
                   className="form-textarea"
-                  placeholder={`Name(s) and details of the ${caseParty2Type.toLowerCase()}(s)...`}
+                  placeholder={`Name(s) and details of the ${(caseParty2Type || 'party').toLowerCase()}(s)...`}
                   value={caseDefendant}
                   onChange={(e) => setCaseDefendant(e.target.value)}
                   rows={2}
