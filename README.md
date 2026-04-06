@@ -77,7 +77,7 @@ npx electron-builder --mac
 > - Run `npm rebuild` in the `server` directory when returning to local web development.
 > - Run `npx electron-builder install-app-deps` in the root directory when preparing to build the Electron app.
 
-### To bypass MacOS security for running the Electron app locally:
+## To bypass MacOS security for running the Electron app locally:
 1. Open the Terminal and navigate to the directory where the Electron app is located.
 2. Run the following command to allow the app to run:
 ```bash
