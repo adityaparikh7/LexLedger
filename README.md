@@ -76,6 +76,18 @@ npx electron-builder --mac
 > **Note on Native Dependencies:** When switching between running the local Node.js development server and building the Electron app, you might encounter an ABI mismatch error for `better-sqlite3`. 
 > - Run `npm rebuild` in the `server` directory when returning to local web development.
 > - Run `npx electron-builder install-app-deps` in the root directory when preparing to build the Electron app.
+
+### To bypass MacOS security for running the Electron app locally:
+1. Open the Terminal and navigate to the directory where the Electron app is located.
+2. Run the following command to allow the app to run:
+```bash
+xattr -d com.apple.quarantine LexLedger.app
+```
+or, if you want to recursively remove the quarantine attribute from all files within the app bundle:
+```bash
+xattr -cr /Applications/LexLedger.app
+```
+
 ## Future Work
 
 *Add any future enhancements, bug fixes, or upcoming features below.*
