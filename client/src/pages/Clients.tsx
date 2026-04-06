@@ -5,6 +5,7 @@ import {
 } from '../api';
 import { useToast } from '../context/ToastContext';
 import { Search, Edit2, Trash2, Users, X, Save, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Clients() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -13,6 +14,7 @@ export default function Clients() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const { addToast } = useToast();
+  const navigate = useNavigate();
   // Form state
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -119,7 +121,13 @@ export default function Clients() {
             <tbody>
               {filtered.map(client => (
                 <tr key={client.id}>
-                  <td style={{ fontWeight: 600 }}>{client.name}</td>
+                  <td 
+                    style={{ fontWeight: 600, color: 'var(--accent-blue)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 4 }}
+                    onClick={() => navigate('/invoices', { state: { clientName: client.name } })}
+                    title={`View invoices for ${client.name}`}
+                  >
+                    {client.name}
+                  </td>
                   <td>{client.email || '—'}</td>
                   <td>{client.phone || '—'}</td>
                   <td>{client.address || '—'}</td>

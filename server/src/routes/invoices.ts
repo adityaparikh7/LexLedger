@@ -4,12 +4,26 @@ import { generatePDF } from '../services/pdfGenerator';
 import { generateExcel } from '../services/excelGenerator';
 import { generateExportExcel } from '../services/exportGenerator';
 import { sendInvoiceEmail, sendReminderEmail } from '../services/emailService';
+import archiver from 'archiver';
 import path from 'path';
 import fs from 'fs';
 const router = Router();
 const COPIES_DIR = process.env.COPIES_PATH || path.join(__dirname, '..', '..', '..', 'copies');
 if (!fs.existsSync(COPIES_DIR)) {
   fs.mkdirSync(COPIES_DIR, { recursive: true });
+}
+
+/** Builds the standardised fee-memo base name (no extension).
+ *  Format: "Fee Memo No: {invoice_number} {client_name} {dd-mm-yyyy}"
+ *  Special characters unsafe for filenames are stripped/replaced. */
+function buildFeeMemoName(invoiceNumber: string, clientName: string, date: string): string {
+  // Reformat yyyy-mm-dd → dd-mm-yyyy
+  const parts = date.split('T')[0].split('-');
+  const formattedDate = parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : date;
+  const safeName = `Fee Memo No- ${invoiceNumber} ${clientName} ${formattedDate}`
+    .replace(/[\/\\:*?"<>|]/g, '-') // replace chars illegal on Windows/macOS
+    .trim();
+  return safeName;
 }
 interface LineItem {
   id?: number;
@@ -73,7 +87,8 @@ router.get('/', (req: Request, res: Response) => {
     const invoices = db.prepare(query).all(...params);
     res.json(invoices);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching invoices:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // GET export invoices as Excel for a date range
@@ -110,7 +125,74 @@ router.get('/export', async (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.send(excelBuffer);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error exporting invoices:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+// GET export invoices as PDFs (ZIP) for a client
+router.get('/export-pdfs', async (req: Request, res: Response) => {
+  try {
+    const { client_id, status } = req.query;
+    if (!client_id) {
+      return res.status(400).json({ error: 'client_id is required' });
+    }
+
+    // Build query with optional status filter
+    let query = `
+      SELECT i.*, c.name as client_name, c.email as client_email, c.address as client_address, c.phone as client_phone
+      FROM invoices i
+      LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.client_id = ?
+    `;
+    const params: any[] = [client_id];
+
+    if (status && status !== 'all') {
+      query += ' AND i.status = ?';
+      params.push(status);
+    }
+    query += ' ORDER BY i.date ASC';
+
+    const invoices = db.prepare(query).all(...params) as any[];
+
+    if (invoices.length === 0) {
+      return res.status(404).json({ error: 'No invoices found for the selected criteria' });
+    }
+
+    // Get the client name for the ZIP filename
+    const clientName = (invoices[0].client_name || 'Client').replace(/[^a-zA-Z0-9_\- ]/g, '');
+    const statusLabel = status && status !== 'all' ? `_${status}` : '';
+    const zipFileName = `${clientName}${statusLabel}_Invoices.zip`;
+
+    // Set response headers for ZIP download
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
+
+    // Create archive and pipe to response
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    archive.on('error', (err: Error) => {
+      throw err;
+    });
+    archive.pipe(res);
+
+    // Generate PDF for each invoice and append to archive
+    for (const invoice of invoices) {
+      const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(invoice.id) as any[];
+      const pdfBuffer = await generatePDF(invoice, lineItems);
+      const entryName = buildFeeMemoName(
+        invoice.invoice_number,
+        invoice.client_name || 'Client',
+        invoice.date || ''
+      );
+      archive.append(pdfBuffer, { name: `${entryName}.pdf` });
+    }
+
+    await archive.finalize();
+  } catch (err: any) {
+    console.error('Error exporting bulk PDFs:', err);
+    // Only send error if headers haven't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate PDF export' });
+    }
   }
 });
 // GET single invoice with line items
@@ -128,7 +210,8 @@ router.get('/:id', (req: Request, res: Response) => {
     const payments = db.prepare('SELECT * FROM payments WHERE invoice_id = ? ORDER BY date ASC').all(req.params.id);
     res.json({ ...invoice, line_items: lineItems, copies, payments });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching invoice:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // POST create invoice
@@ -183,7 +266,8 @@ router.post('/', (req: Request, res: Response) => {
     const items = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(invoiceId);
     res.status(201).json({ ...invoice, line_items: items });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error creating invoice:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // PUT update invoice
@@ -251,14 +335,15 @@ router.put('/:id', (req: Request, res: Response) => {
     const items = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(req.params.id);
     res.json({ ...invoice, line_items: items });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error updating invoice:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // PATCH update status
 router.patch('/:id/status', (req: Request, res: Response) => {
   try {
     const { status, payments: paymentEntries } = req.body;
-    const validStatuses = ['draft', 'sent', 'paid', 'overdue', 'cancelled'];
+    const validStatuses = ['draft', 'sent', 'paid', 'unpaid', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
     }
@@ -278,7 +363,8 @@ router.patch('/:id/status', (req: Request, res: Response) => {
     const paymentsResult = db.prepare('SELECT * FROM payments WHERE invoice_id = ? ORDER BY date ASC').all(req.params.id);
     res.json({ ...(invoice as any), payments: paymentsResult });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error updating invoice status:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // PUT update payments for an invoice
@@ -298,7 +384,8 @@ router.put('/:id/payments', (req: Request, res: Response) => {
     const paymentsResult = db.prepare('SELECT * FROM payments WHERE invoice_id = ? ORDER BY date ASC').all(req.params.id);
     res.json({ ...(invoice as any), payments: paymentsResult });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error updating invoice payments:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // DELETE invoice
@@ -308,7 +395,8 @@ router.delete('/:id', (req: Request, res: Response) => {
     if (result.changes === 0) return res.status(404).json({ error: 'Invoice not found' });
     res.json({ message: 'Invoice deleted successfully' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error deleting invoice:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // GET download PDF
@@ -324,18 +412,23 @@ router.get('/:id/pdf', async (req: Request, res: Response) => {
     // Generate PDF
     const pdfBuffer = await generatePDF(invoice, lineItems);
     // Save redundant copy
-    const safeInvoiceNumber = invoice.invoice_number.replace(/[\/\\]/g, '-');
-    const fileName = `${safeInvoiceNumber}_${Date.now()}.pdf`;
+    const feeMemoName = buildFeeMemoName(
+      invoice.invoice_number,
+      invoice.client_name || 'Client',
+      invoice.date || ''
+    );
+    const fileName = `${feeMemoName}_${Date.now()}.pdf`;
     const filePath = path.join(COPIES_DIR, fileName);
     fs.writeFileSync(filePath, pdfBuffer);
     db.prepare(
       'INSERT INTO invoice_copies (invoice_id, file_type, file_name, file_path) VALUES (?, ?, ?, ?)'
     ).run(invoice.id, 'pdf', fileName, filePath);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoice_number}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${feeMemoName}.pdf"`);
     res.send(pdfBuffer);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error generating invoice PDF:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // GET download Excel
@@ -361,7 +454,8 @@ router.get('/:id/excel', async (req: Request, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoice_number}.xlsx"`);
     res.send(excelBuffer);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error generating invoice Excel:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // POST send invoice via email
@@ -381,7 +475,8 @@ router.post('/:id/send', async (req: Request, res: Response) => {
     db.prepare("UPDATE invoices SET status = 'sent', updated_at = datetime('now') WHERE id = ? AND status = 'draft'").run(req.params.id);
     res.json({ message: 'Invoice sent successfully', ...result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error sending invoice email:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 // POST send payment reminder
@@ -397,7 +492,8 @@ router.post('/:id/remind', async (req: Request, res: Response) => {
     const result = await sendReminderEmail(invoice);
     res.json({ message: 'Reminder sent successfully', ...result });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error sending reminder email:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 export default router;

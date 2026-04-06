@@ -33,7 +33,7 @@ export function initDatabase(): void {
       client_id INTEGER NOT NULL,
       date TEXT NOT NULL,
       date_paid TEXT,
-      status TEXT DEFAULT 'draft' CHECK(status IN ('draft','sent','paid','overdue','cancelled')),
+      status TEXT DEFAULT 'draft' CHECK(status IN ('draft','sent','paid','unpaid','cancelled')),
       notes TEXT,
       case_name TEXT,
       case_party1_type TEXT,
@@ -157,6 +157,54 @@ export function initDatabase(): void {
     } catch (_) {
       // Column already exists — ignore
     }
+  }
+
+  // Migration: rebuild invoices table to change CHECK constraint from 'overdue' to 'unpaid'
+  // SQLite does not support ALTER TABLE to modify CHECK constraints; a full table rebuild is required.
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(invoices)").all() as any[];
+    const hasOldConstraint = tableInfo.length > 0; // table exists
+    if (hasOldConstraint) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS invoices_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          invoice_number TEXT UNIQUE NOT NULL,
+          client_id INTEGER NOT NULL,
+          date TEXT NOT NULL,
+          date_paid TEXT,
+          status TEXT DEFAULT 'draft' CHECK(status IN ('draft','sent','paid','unpaid','cancelled')),
+          notes TEXT,
+          case_name TEXT,
+          case_party1_type TEXT,
+          case_plaintiff TEXT,
+          case_party2_type TEXT,
+          case_defendant TEXT,
+          subtotal REAL DEFAULT 0,
+          tax_rate REAL DEFAULT 0,
+          tax_amount REAL DEFAULT 0,
+          total REAL DEFAULT 0,
+          amount_received REAL DEFAULT 0,
+          tds_amount REAL DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT
+        );
+      `);
+      // Copy data, converting 'overdue' -> 'unpaid'
+      db.exec(`
+        INSERT OR IGNORE INTO invoices_new
+          SELECT id, invoice_number, client_id, date, date_paid,
+            CASE WHEN status = 'overdue' THEN 'unpaid' ELSE status END,
+            notes, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant,
+            subtotal, tax_rate, tax_amount, total, amount_received, tds_amount,
+            created_at, updated_at
+          FROM invoices;
+      `);
+      db.exec(`DROP TABLE invoices;`);
+      db.exec(`ALTER TABLE invoices_new RENAME TO invoices;`);
+    }
+  } catch (_) {
+    // Table already rebuilt or migration not needed
   }
 }
 

@@ -45,9 +45,14 @@ router.get('/firm-profile', (_req: Request, res: Response) => {
         smtp_pass: '',
       });
     }
+    // Mask password before sending to frontend
+    if (profile.smtp_pass) {
+      profile.smtp_pass = '********';
+    }
     res.json(profile);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching firm profile:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -71,6 +76,12 @@ router.put('/firm-profile', (req: Request, res: Response) => {
       smtp_user,
       smtp_pass,
     } = req.body;
+
+    // Only update password if it's not the masked value
+    const currentProfile = getFirmProfile();
+    const finalSmtpPass = (smtp_pass === '********' || !smtp_pass) 
+      ? currentProfile.smtp_pass 
+      : smtp_pass;
 
     db.prepare(`
       UPDATE firm_profile SET
@@ -106,13 +117,17 @@ router.put('/firm-profile', (req: Request, res: Response) => {
       smtp_host ?? '',
       smtp_port ?? 587,
       smtp_user ?? '',
-      smtp_pass ?? ''
+      finalSmtpPass ?? ''
     );
 
-    const updated = db.prepare('SELECT * FROM firm_profile WHERE id = 1').get();
+    const updated = db.prepare('SELECT * FROM firm_profile WHERE id = 1').get() as FirmProfile;
+    if (updated.smtp_pass) {
+      updated.smtp_pass = '********';
+    }
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error updating firm profile:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

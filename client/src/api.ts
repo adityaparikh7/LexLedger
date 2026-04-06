@@ -32,7 +32,7 @@ export interface Invoice {
   client_phone?: string | null;
   date: string;
   date_paid: string | null;
-  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+  status: 'draft' | 'sent' | 'paid' | 'unpaid' | 'cancelled';
   notes: string | null;
   case_name: string | null;
   case_party1_type: string | null;
@@ -64,9 +64,9 @@ export interface DashboardData {
     total_invoices: number;
     total_paid: number;
     total_outstanding: number;
-    total_overdue: number;
+    total_unpaid: number;
     paid_count: number;
-    overdue_count: number;
+    unpaid_count: number;
     draft_count: number;
     sent_count: number;
   };
@@ -140,12 +140,21 @@ export const updateInvoiceStatus = (id: number, status: string, payments?: Payme
 export const updateInvoicePayments = (id: number, payments: Payment[]): Promise<Invoice> =>
   request(`/invoices/${id}/payments`, { method: 'PUT', body: JSON.stringify({ payments }) });
 // Downloads
-export const downloadPDF = async (id: number, invoiceNumber: string) => {
+function formatDateDMY(isoDate: string): string {
+  const parts = isoDate.split('T')[0].split('-');
+  if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  return isoDate;
+}
+export const downloadPDF = async (id: number, invoiceNumber: string, clientName: string, date: string) => {
   const blob = await request(`/invoices/${id}/pdf`);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${invoiceNumber}.pdf`;
+  const formattedDate = formatDateDMY(date);
+  const safeName = `Fee Memo No- ${invoiceNumber} ${clientName} ${formattedDate}`
+    .replace(/[/\\:*?"<>|]/g, '-')
+    .trim();
+  a.download = `${safeName}.pdf`;
   a.click();
   URL.revokeObjectURL(url);
 };
@@ -164,6 +173,23 @@ export const downloadExportExcel = async (startDate: string, endDate: string) =>
   const a = document.createElement('a');
   a.href = url;
   a.download = `Invoice_Records_${startDate}_to_${endDate}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+export const downloadBulkPDFs = async (clientId: number, status: string, clientName: string) => {
+  const statusParam = status || 'all';
+  const res = await fetch(`${API_BASE}/invoices/export-pdfs?client_id=${clientId}&status=${statusParam}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Export failed' }));
+    throw new Error(err.error || 'Export failed');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeName = clientName.replace(/[^a-zA-Z0-9_\- ]/g, '');
+  const statusLabel = statusParam !== 'all' ? `_${statusParam}` : '';
+  a.download = `${safeName}${statusLabel}_Invoices.zip`;
   a.click();
   URL.revokeObjectURL(url);
 };

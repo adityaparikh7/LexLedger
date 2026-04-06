@@ -9,7 +9,8 @@ router.get('/', (_req: Request, res: Response) => {
     const clients = db.prepare('SELECT * FROM clients ORDER BY name ASC').all();
     res.json(clients);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching clients:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -20,7 +21,8 @@ router.get('/:id', (req: Request, res: Response) => {
     if (!client) return res.status(404).json({ error: 'Client not found' });
     res.json(client);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error fetching client:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -37,7 +39,8 @@ router.post('/', (req: Request, res: Response) => {
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(client);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error creating client:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -56,7 +59,8 @@ router.put('/:id', (req: Request, res: Response) => {
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
     res.json(client);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error updating client:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -79,7 +83,8 @@ router.delete('/:id', (req: Request, res: Response) => {
 
     res.json({ message: 'Client deleted successfully' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('Error deleting client:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

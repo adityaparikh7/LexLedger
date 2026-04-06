@@ -26,6 +26,17 @@ function formatDate(raw: string | null | undefined): string {
 
 const TEMPLATE_PATH = path.join(__dirname, 'memo-template.html');
 
+/** Escape HTML special characters to prevent XSS */
+function escapeHTML(str: string | null | undefined): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffer> {
   // Read and populate the HTML template
   let html = fs.readFileSync(TEMPLATE_PATH, 'utf-8');
@@ -35,17 +46,17 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
 
   // Build firm contact line
   const contactParts: string[] = [];
-  if (profile.firm_phone) contactParts.push(`(M) ${profile.firm_phone}`);
-  if (profile.firm_email) contactParts.push(`E-mail : ${profile.firm_email}`);
+  if (profile.firm_phone) contactParts.push(`(M) ${escapeHTML(profile.firm_phone)}`);
+  if (profile.firm_email) contactParts.push(`E-mail : ${escapeHTML(profile.firm_email)}`);
   const firmContact = contactParts.join(', ');
 
   // Build bank details HTML
   const bankLines: string[] = [];
-  if (profile.bank_account_name) bankLines.push(`Bank Account Name : ${profile.bank_account_name}`);
-  if (profile.bank_name) bankLines.push(`Bank Name : ${profile.bank_name}`);
-  if (profile.bank_account_number) bankLines.push(`Account Number : ${profile.bank_account_number}`);
-  if (profile.bank_ifsc) bankLines.push(`IFSC : ${profile.bank_ifsc}`);
-  if (profile.pan_number) bankLines.push(`PAN No. : ${profile.pan_number}`);
+  if (profile.bank_account_name) bankLines.push(`Bank Account Name : ${escapeHTML(profile.bank_account_name)}`);
+  if (profile.bank_name) bankLines.push(`Bank Name : ${escapeHTML(profile.bank_name)}`);
+  if (profile.bank_account_number) bankLines.push(`Account Number : ${escapeHTML(profile.bank_account_number)}`);
+  if (profile.bank_ifsc) bankLines.push(`IFSC : ${escapeHTML(profile.bank_ifsc)}`);
+  if (profile.pan_number) bankLines.push(`PAN No. : ${escapeHTML(profile.pan_number)}`);
   const bankDetailsHtml = bankLines.join('<br/>');
 
   // Build line item rows
@@ -54,7 +65,7 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
       (item, i) => `
       <tr>
         <td>${i + 1}</td>
-        <td>${item.description}</td>
+        <td>${escapeHTML(item.description)}</td>
         <td class="amount">${formatINR(item.amount)}</td>
       </tr>`
     )
@@ -66,28 +77,28 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
   const hasParty2 = invoice.case_party2_type && invoice.case_party2_type !== 'None';
 
   if (hasParty1 && hasParty2) {
-    casePartiesHtml = `${invoice.case_plaintiff ?? ''} …${invoice.case_party1_type}<br/>vs<br/>${invoice.case_defendant ?? ''} …${invoice.case_party2_type}<br/>`;
+    casePartiesHtml = `${escapeHTML(invoice.case_plaintiff ?? '')} …${escapeHTML(invoice.case_party1_type)}<br/>vs<br/>${escapeHTML(invoice.case_defendant ?? '')} …${escapeHTML(invoice.case_party2_type)}<br/>`;
   } else if (hasParty1) {
-    casePartiesHtml = `${invoice.case_plaintiff ?? ''} …${invoice.case_party1_type}<br/>`;
+    casePartiesHtml = `${escapeHTML(invoice.case_plaintiff ?? '')} …${escapeHTML(invoice.case_party1_type)}<br/>`;
   } else if (hasParty2) {
-    casePartiesHtml = `${invoice.case_defendant ?? ''} …${invoice.case_party2_type}<br/>`;
+    casePartiesHtml = `${escapeHTML(invoice.case_defendant ?? '')} …${escapeHTML(invoice.case_party2_type)}<br/>`;
   }
 
   // Replace placeholders
   html = html
-    .replace('{{firm_name}}', profile.firm_name)
-    .replace('{{firm_address}}', profile.firm_address)
-    .replace('{{firm_contact}}', firmContact)
-    .replace('{{bank_details}}', bankDetailsHtml)
-    .replace('{{signature_name}}', profile.signature_name)
-    .replace('{{signature_full}}', profile.signature_full)
-    .replace('{{client_name}}', invoice.client_name ?? '')
-    .replace('{{invoice_number}}', invoice.invoice_number ?? '')
-    .replace('{{date}}', formatDate(invoice.date))
-    .replace('{{case_name}}', invoice.case_name ?? '')
-    .replace('{{case_parties}}', casePartiesHtml)
-    .replace('{{line_items}}', lineItemsHtml)
-    .replace('{{total}}', formatINR(invoice.total ?? 0));
+    .replace('{{firm_name}}', escapeHTML(profile.firm_name))
+    .replace('{{firm_address}}', escapeHTML(profile.firm_address))
+    .replace('{{firm_contact}}', firmContact) // Already escaped in its parts
+    .replace('{{bank_details}}', bankDetailsHtml) // Already escaped in its parts
+    .replace('{{signature_name}}', escapeHTML(profile.signature_name))
+    .replace('{{signature_full}}', escapeHTML(profile.signature_full))
+    .replace('{{client_name}}', escapeHTML(invoice.client_name ?? ''))
+    .replace('{{invoice_number}}', escapeHTML(invoice.invoice_number ?? ''))
+    .replace('{{date}}', formatDate(invoice.date)) // Already formatted date, safe
+    .replace('{{case_name}}', escapeHTML(invoice.case_name ?? ''))
+    .replace('{{case_parties}}', casePartiesHtml) // Already escaped in its parts
+    .replace('{{line_items}}', lineItemsHtml) // Already escaped in its parts
+    .replace('{{total}}', formatINR(invoice.total ?? 0)); // Formatted number, safe
 
   // Launch Puppeteer and render HTML to PDF
   const launchOptions: Parameters<typeof puppeteer.launch>[0] = {

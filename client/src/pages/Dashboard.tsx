@@ -64,8 +64,8 @@ export default function Dashboard() {
         </div>
         <div className="stat-card red">
           <div className="stat-icon"><AlertTriangle size={28} /></div>
-          <div className="stat-value">{stats?.overdue_count || 0}</div>
-          <div className="stat-label">Overdue</div>
+          <div className="stat-value">{stats?.unpaid_count || 0}</div>
+          <div className="stat-label">Unpaid</div>
         </div>
         <div className="stat-card green">
           <div className="stat-icon"><Users size={28} /></div>
@@ -123,7 +123,7 @@ export default function Dashboard() {
                   <td>
                     <div className="btn-group">
                       <button className="btn-icon btn-icon-blue" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}><Edit2 size={18} /></button>
-                      <button className="btn-icon btn-icon-green" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number)}><Download size={18} /></button>
+                      <button className="btn-icon btn-icon-green" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date)}><Download size={18} /></button>
                       {inv.status !== 'paid' && (
                         <button className="btn-icon btn-icon-amber" title="Mark Paid" onClick={() => handleMarkPaid(inv.id)}><CheckCircle size={18} /></button>
                       )}

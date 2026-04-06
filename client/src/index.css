@@ -362,7 +362,7 @@ td.sticky-right::before {
   background: rgba(46, 94, 78, 0.15);
   color: var(--accent-green);
 }
-.badge.overdue {
+.badge.unpaid {
   background: rgba(224, 122, 95, 0.15);
   color: var(--accent-red);
 }
