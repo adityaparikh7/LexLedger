@@ -380,7 +380,7 @@ export default function Settings() {
             <div className="settings-section" style={{ marginBottom: 0 }}>
               <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Info size={20} /> About</h3>
               <div style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.8 }}>
-                <p><strong>LexLedger</strong> v1.2.0</p>
+                <p><strong>LexLedger</strong> v1.2.3</p>
                 <p>A professional invoicing and billing tool designed for legal practices.</p>
                 <div style={{ marginTop: 12 }}>
                   <strong>Key Features:</strong>
