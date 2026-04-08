@@ -42,21 +42,26 @@
       margin: 15px 0;
     }
 
-    .case {
-      text-align: center;
-      margin: 20px 0;
-      line-height: 1.6;
-      font-size: 14px;
-    }
-
-    .case_name {
-      font-weight: bold;
-      font-size: 20px;
-      margin-bottom: 15px;
-    }
-
     .intro {
       margin: 20px 0;
+    }
+
+    table.details-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    table.details-table td {
+      padding: 4px 8px 4px 0;
+      border: none;
+    }
+
+    .bank table.details-table {
+      width: auto;
+      margin-top: 8px;
     }
 
     table {
@@ -128,10 +133,9 @@
 
   <div class="divider"></div>
 
-  <div class="case">
-    <div class="case_name">{{case_name}}</div>
-    {{case_parties}}
-  </div>
+  <table class="details-table" style="margin: 20px 0;">
+    {{case_details}}
+  </table>
 
   
 
@@ -154,7 +158,10 @@
   </table>
 
   <div class="bank">
-    {{bank_details}}
+    <strong>Bank Details:</strong>
+    <table class="details-table">
+      {{bank_details}}
+    </table>
   </div>
 
   <div class="closing">
