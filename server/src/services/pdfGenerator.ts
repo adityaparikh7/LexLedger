@@ -52,12 +52,12 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
 
   // Build bank details HTML
   const bankLines: string[] = [];
-  if (profile.bank_account_name) bankLines.push(`Bank Account Name : ${escapeHTML(profile.bank_account_name)}`);
-  if (profile.bank_name) bankLines.push(`Bank Name : ${escapeHTML(profile.bank_name)}`);
-  if (profile.bank_account_number) bankLines.push(`Account Number : ${escapeHTML(profile.bank_account_number)}`);
-  if (profile.bank_ifsc) bankLines.push(`IFSC : ${escapeHTML(profile.bank_ifsc)}`);
-  if (profile.pan_number) bankLines.push(`PAN No. : ${escapeHTML(profile.pan_number)}`);
-  const bankDetailsHtml = bankLines.join('<br/>');
+  if (profile.bank_account_name) bankLines.push(`<tr><td style="width: 130px;">Bank Account Name</td><td style="width: 10px;">:</td><td>${escapeHTML(profile.bank_account_name)}</td></tr>`);
+  if (profile.bank_name) bankLines.push(`<tr><td>Bank Name</td><td>:</td><td>${escapeHTML(profile.bank_name)}</td></tr>`);
+  if (profile.bank_account_number) bankLines.push(`<tr><td>Account Number</td><td>:</td><td>${escapeHTML(profile.bank_account_number)}</td></tr>`);
+  if (profile.bank_ifsc) bankLines.push(`<tr><td>IFSC</td><td>:</td><td>${escapeHTML(profile.bank_ifsc)}</td></tr>`);
+  if (profile.pan_number) bankLines.push(`<tr><td>PAN No.</td><td>:</td><td>${escapeHTML(profile.pan_number)}</td></tr>`);
+  const bankDetailsHtml = bankLines.join('\n');
 
   // Build line item rows
   const lineItemsHtml = lineItems
@@ -71,18 +71,40 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
     )
     .join('');
 
-  // Build case parties html
-  let casePartiesHtml = '';
+  // Build case parties snippet
+  let casePartiesSnippet = '';
   const hasParty1 = invoice.case_party1_type && invoice.case_party1_type !== 'None';
   const hasParty2 = invoice.case_party2_type && invoice.case_party2_type !== 'None';
 
   if (hasParty1 && hasParty2) {
-    casePartiesHtml = `${escapeHTML(invoice.case_plaintiff ?? '')} …${escapeHTML(invoice.case_party1_type)}<br/>vs<br/>${escapeHTML(invoice.case_defendant ?? '')} …${escapeHTML(invoice.case_party2_type)}<br/>`;
+    casePartiesSnippet = `${escapeHTML(invoice.case_plaintiff ?? '')} …${escapeHTML(invoice.case_party1_type)}<br/>vs<br/>${escapeHTML(invoice.case_defendant ?? '')} …${escapeHTML(invoice.case_party2_type)}`;
   } else if (hasParty1) {
-    casePartiesHtml = `${escapeHTML(invoice.case_plaintiff ?? '')} …${escapeHTML(invoice.case_party1_type)}<br/>`;
+    casePartiesSnippet = `${escapeHTML(invoice.case_plaintiff ?? '')} …${escapeHTML(invoice.case_party1_type)}`;
   } else if (hasParty2) {
-    casePartiesHtml = `${escapeHTML(invoice.case_defendant ?? '')} …${escapeHTML(invoice.case_party2_type)}<br/>`;
+    casePartiesSnippet = `${escapeHTML(invoice.case_defendant ?? '')} …${escapeHTML(invoice.case_party2_type)}`;
   }
+
+  // Build case details html (as table rows)
+  const caseDetailsLines: string[] = [];
+  if (invoice.case_name) {
+    caseDetailsLines.push(`
+      <tr>
+        <td style="width: 15%; font-weight: bold; vertical-align: top;">Case Name</td>
+        <td style="width: 2%; vertical-align: top; font-weight: bold;">:</td>
+        <td style="vertical-align: top; font-weight: bold; font-size: 16px;">${escapeHTML(invoice.case_name)}</td>
+      </tr>
+    `);
+  }
+  if (casePartiesSnippet) {
+    caseDetailsLines.push(`
+      <tr>
+        <td style="width: 15%; font-weight: bold; vertical-align: top;">Parties</td>
+        <td style="width: 2%; vertical-align: top; font-weight: bold;">:</td>
+        <td style="vertical-align: top;">${casePartiesSnippet}</td>
+      </tr>
+    `);
+  }
+  const caseDetailsHtml = caseDetailsLines.join('');
 
   // Replace placeholders
   html = html
@@ -95,8 +117,7 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
     .replace('{{client_name}}', escapeHTML(invoice.client_name ?? ''))
     .replace('{{invoice_number}}', escapeHTML(invoice.invoice_number ?? ''))
     .replace('{{date}}', formatDate(invoice.date)) // Already formatted date, safe
-    .replace('{{case_name}}', escapeHTML(invoice.case_name ?? ''))
-    .replace('{{case_parties}}', casePartiesHtml) // Already escaped in its parts
+    .replace('{{case_details}}', caseDetailsHtml) // Already escaped in its parts
     .replace('{{line_items}}', lineItemsHtml) // Already escaped in its parts
     .replace('{{total}}', formatINR(invoice.total ?? 0)); // Formatted number, safe
 
