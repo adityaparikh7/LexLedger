@@ -161,10 +161,17 @@ export function initDatabase(): void {
 
   // Migration: rebuild invoices table to change CHECK constraint from 'overdue' to 'unpaid'
   // SQLite does not support ALTER TABLE to modify CHECK constraints; a full table rebuild is required.
+  // IMPORTANT: Only run this migration if the old 'overdue' value is actually in the CHECK constraint.
+  // We must also disable foreign keys during the rebuild to prevent ON DELETE CASCADE from wiping
+  // child tables (line_items, payments, invoice_copies) when dropping the old invoices table.
   try {
-    const tableInfo = db.prepare("PRAGMA table_info(invoices)").all() as any[];
-    const hasOldConstraint = tableInfo.length > 0; // table exists
-    if (hasOldConstraint) {
+    const tableSql = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='invoices'"
+    ).get() as { sql: string } | undefined;
+    const needsMigration = tableSql?.sql?.includes("'overdue'") ?? false;
+    if (needsMigration) {
+      // Disable foreign keys so DROP TABLE does not cascade-delete child rows
+      db.pragma('foreign_keys = OFF');
       db.exec(`
         CREATE TABLE IF NOT EXISTS invoices_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,9 +209,12 @@ export function initDatabase(): void {
       `);
       db.exec(`DROP TABLE invoices;`);
       db.exec(`ALTER TABLE invoices_new RENAME TO invoices;`);
+      // Re-enable foreign keys
+      db.pragma('foreign_keys = ON');
     }
   } catch (_) {
-    // Table already rebuilt or migration not needed
+    // Table already rebuilt or migration not needed — ensure FK stays on
+    db.pragma('foreign_keys = ON');
   }
 }
 
