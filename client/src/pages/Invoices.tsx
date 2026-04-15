@@ -140,9 +140,10 @@ export default function Invoices() {
   const handleSend = async (id: number) => {
     try {
       const result = await sendInvoice(id);
-      addToast('Invoice sent successfully!', 'success');
-      if (result.previewUrl) {
-        addToast(`Preview: ${result.previewUrl}`, 'info');
+      if (result.autoAttached) {
+        addToast('Invoice opened in mail client with PDF attached!', 'success');
+      } else {
+        addToast('Mail client opened — please attach the downloaded PDF manually', 'info');
       }
       fetchInvoices();
     } catch (err: unknown) {
@@ -151,11 +152,8 @@ export default function Invoices() {
   };
   const handleRemind = async (id: number) => {
     try {
-      const result = await sendReminder(id);
-      addToast('Reminder sent!', 'success');
-      if (result.previewUrl) {
-        addToast(`Preview: ${result.previewUrl}`, 'info');
-      }
+      await sendReminder(id);
+      addToast('Reminder opened in mail client!', 'success');
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     }

@@ -19,6 +19,7 @@ export interface FirmProfile {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
+  email_client: 'apple_mail' | 'outlook' | 'mailto';
   updated_at: string;
 }
 
@@ -43,6 +44,7 @@ router.get('/firm-profile', (_req: Request, res: Response) => {
         smtp_port: 587,
         smtp_user: '',
         smtp_pass: '',
+        email_client: 'apple_mail',
       });
     }
     // Mask password before sending to frontend
@@ -75,6 +77,7 @@ router.put('/firm-profile', (req: Request, res: Response) => {
       smtp_port,
       smtp_user,
       smtp_pass,
+      email_client,
     } = req.body;
 
     // Only update password if it's not the masked value
@@ -100,6 +103,7 @@ router.put('/firm-profile', (req: Request, res: Response) => {
         smtp_port = ?,
         smtp_user = ?,
         smtp_pass = ?,
+        email_client = ?,
         updated_at = datetime('now')
       WHERE id = 1
     `).run(
@@ -117,7 +121,8 @@ router.put('/firm-profile', (req: Request, res: Response) => {
       smtp_host ?? '',
       smtp_port ?? 587,
       smtp_user ?? '',
-      finalSmtpPass ?? ''
+      finalSmtpPass ?? '',
+      email_client ?? 'apple_mail'
     );
 
     const updated = db.prepare('SELECT * FROM firm_profile WHERE id = 1').get() as FirmProfile;
@@ -150,6 +155,7 @@ export function getFirmProfile(): FirmProfile {
     smtp_port: 587,
     smtp_user: '',
     smtp_pass: '',
+    email_client: 'apple_mail',
     updated_at: '',
   };
 }

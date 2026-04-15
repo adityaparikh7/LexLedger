@@ -89,6 +89,7 @@ export interface FirmProfile {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
+  email_client: 'apple_mail' | 'outlook' | 'mailto';
 }
 async function request(url: string, options?: RequestInit) {
   const res = await fetch(`${API_BASE}${url}`, {
@@ -194,9 +195,9 @@ export const downloadBulkPDFs = async (clientId: number, status: string, clientN
   URL.revokeObjectURL(url);
 };
 // Email
-export const sendInvoice = (id: number): Promise<{ message: string; previewUrl?: string }> =>
+export const sendInvoice = (id: number): Promise<{ message: string; method: string; autoAttached: boolean }> =>
   request(`/invoices/${id}/send`, { method: 'POST' });
-export const sendReminder = (id: number): Promise<{ message: string; previewUrl?: string }> =>
+export const sendReminder = (id: number): Promise<{ message: string; method: string }> =>
   request(`/invoices/${id}/remind`, { method: 'POST' });
 // Settings — Firm Profile
 export const getFirmProfile = (): Promise<FirmProfile> => request('/settings/firm-profile');

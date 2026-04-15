@@ -159,6 +159,13 @@ export function initDatabase(): void {
     }
   }
 
+  // Migration: add email_client column to firm_profile
+  try {
+    db.exec(`ALTER TABLE firm_profile ADD COLUMN email_client TEXT NOT NULL DEFAULT 'apple_mail'`);
+  } catch (_) {
+    // Column already exists — ignore
+  }
+
   // Migration: rebuild invoices table to change CHECK constraint from 'overdue' to 'unpaid'
   // SQLite does not support ALTER TABLE to modify CHECK constraints; a full table rebuild is required.
   // IMPORTANT: Only run this migration if the old 'overdue' value is actually in the CHECK constraint.
