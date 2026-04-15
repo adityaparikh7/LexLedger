@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { getFirmProfile, updateFirmProfile, type FirmProfile } from '../api';
 import { ToastContext } from '../context/ToastContext';
-import { Hand, Landmark, Building, PenTool, Mail, Lightbulb, FileText, Info, Save, Loader2 } from 'lucide-react';
+import { Hand, Landmark, Building, PenTool, Mail, Monitor, FileText, Info, Save, Loader2, Check } from 'lucide-react';
 
 const EMPTY_PROFILE: FirmProfile = {
   firm_name: '',
@@ -19,6 +19,7 @@ const EMPTY_PROFILE: FirmProfile = {
   smtp_port: 587,
   smtp_user: '',
   smtp_pass: '',
+  email_client: 'apple_mail',
 };
 
 export default function Settings() {
@@ -260,64 +261,86 @@ export default function Settings() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Email Configuration */}
+          </div>          {/* Email Configuration */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="settings-section" style={{ marginBottom: 0 }}>
-              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Mail size={20} /> Email Configuration</h3>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Mail size={20} /> Email Client</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: -8 }}>
-                Configure your SMTP settings to send invoices and reminders via email.
+                Choose your preferred mail application. Invoices and reminders will open directly in the selected client.
               </p>
-              <div style={{ display: 'grid', gap: 16 }}>
-                <div className="form-row">
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">SMTP Host</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. smtp.gmail.com"
-                      value={profile.smtp_host}
-                      onChange={(e) => handleChange('smtp_host', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">SMTP Port</label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      placeholder="e.g. 587"
-                      value={profile.smtp_port}
-                      onChange={(e) => handleChange('smtp_port', parseInt(e.target.value, 10) || 587)}
-                    />
-                  </div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">SMTP Username (Email)</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. your-email@gmail.com"
-                      value={profile.smtp_user}
-                      onChange={(e) => handleChange('smtp_user', e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">SMTP Password (App Password)</label>
-                    <input
-                      type="password"
-                      className="form-input"
-                      placeholder="e.g. abcdefghijklmnop"
-                      value={profile.smtp_pass}
-                      onChange={(e) => handleChange('smtp_pass', e.target.value)}
-                    />
-                  </div>
-                </div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {[
+                  {
+                    key: 'apple_mail' as const,
+                    label: 'Apple Mail',
+                    desc: 'Opens Mail.app with the invoice PDF auto-attached',
+                    badge: 'Auto-Attach',
+                  },
+                  {
+                    key: 'outlook' as const,
+                    label: 'Microsoft Outlook',
+                    desc: 'Opens Outlook with the invoice PDF auto-attached',
+                    badge: 'Auto-Attach',
+                  },
+                  {
+                    key: 'mailto' as const,
+                    label: 'Default Mail Client',
+                    desc: 'Opens your system default via mailto: link (manual attachment)',
+                    badge: 'Manual Attach',
+                  },
+                ].map(opt => {
+                  const isSelected = profile.email_client === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => handleChange('email_client', opt.key)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 14,
+                        padding: '14px 16px',
+                        background: isSelected ? 'rgba(99, 102, 241, 0.1)' : 'var(--bg-glass)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: isSelected ? '2px solid var(--accent-blue)' : '1px solid var(--border-color)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.2s ease',
+                        width: '100%',
+                      }}
+                    >
+                      <div style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: isSelected ? 'var(--accent-blue)' : 'var(--bg-tertiary, rgba(0,0,0,0.06))',
+                        color: isSelected ? '#fff' : 'var(--text-secondary)',
+                        flexShrink: 0,
+                        transition: 'all 0.2s ease',
+                      }}>
+                        {isSelected ? <Check size={18} /> : <Monitor size={18} />}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-heading)', marginBottom: 2 }}>
+                          {opt.label}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                          {opt.desc}
+                        </div>
+                      </div>
+                      <span
+                        className={opt.key !== 'mailto' ? 'badge paid' : 'badge sent'}
+                        style={{ fontSize: 10, flexShrink: 0 }}
+                      >
+                        {opt.badge}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 12 }}>
-                <Lightbulb size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} /> If no SMTP is configured, emails are sent to <a href="https://ethereal.email" target="_blank" rel="noopener" style={{ color: 'var(--accent-blue)' }}>Ethereal</a> test accounts for preview.
-              </p>
             </div>
           </div>
 
@@ -380,7 +403,7 @@ export default function Settings() {
             <div className="settings-section" style={{ marginBottom: 0 }}>
               <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Info size={20} /> About</h3>
               <div style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.8 }}>
-                <p><strong>LexLedger</strong> v1.2.3</p>
+                <p><strong>LexLedger</strong> v1.2.5</p>
                 <p>A professional invoicing and billing tool designed for legal practices.</p>
                 <div style={{ marginTop: 12 }}>
                   <strong>Key Features:</strong>
@@ -389,7 +412,7 @@ export default function Settings() {
                     <li><strong>Flexible Invoicing:</strong> Generate professional PDF invoices with auto-numbering.</li>
                     <li><strong>Payment Management:</strong> Advanced tracking for partial payments & TDS.</li>
                     <li><strong>Bulk Export:</strong> Export invoice records to Excel for custom date ranges.</li>
-                    <li><strong>Customization:</strong> Fully editable firm profiles and integrated SMTP email.</li>
+                    <li><strong>Customization:</strong> Fully editable firm profiles and native mail client integration.</li>
                     <li><strong>Reliability:</strong> Offline access with automated redundant backups.</li>
                   </ul>
                 </div>
