@@ -400,6 +400,30 @@ router.delete('/:id', (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+// GET preview PDF (inline, no copy saved)
+router.get('/:id/pdf/preview', async (req: Request, res: Response) => {
+  try {
+    const invoice = db.prepare(`
+      SELECT i.*, c.name as client_name, c.email as client_email, c.address as client_address, c.phone as client_phone
+      FROM invoices i LEFT JOIN clients c ON i.client_id = c.id
+      WHERE i.id = ?
+    `).get(req.params.id) as any;
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(req.params.id) as any[];
+    const pdfBuffer = await generatePDF(invoice, lineItems);
+    const feeMemoName = buildFeeMemoName(
+      invoice.invoice_number,
+      invoice.client_name || 'Client',
+      invoice.date || ''
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${feeMemoName}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    console.error('Error generating invoice PDF preview:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 // GET download PDF
 router.get('/:id/pdf', async (req: Request, res: Response) => {
   try {

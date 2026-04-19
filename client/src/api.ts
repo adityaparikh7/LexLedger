@@ -103,7 +103,7 @@ async function request(url: string, options?: RequestInit) {
     const err = await res.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(err.error || 'Request failed');
   }
-  // Handle blob responses for file downloads
+  // Handle blob responses for file downloads and previews
   if (res.headers.get('content-type')?.includes('application/pdf') ||
       res.headers.get('content-type')?.includes('spreadsheetml')) {
     return res.blob();
@@ -158,6 +158,17 @@ export const downloadPDF = async (id: number, invoiceNumber: string, clientName:
   a.download = `${safeName}.pdf`;
   a.click();
   URL.revokeObjectURL(url);
+};
+// Preview — returns a blob URL for embedding in an iframe (caller must revoke when done)
+export const fetchPDFPreviewUrl = async (id: number): Promise<{ url: string; revoke: () => void }> => {
+  const res = await fetch(`${API_BASE}/invoices/${id}/pdf/preview`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Preview failed' }));
+    throw new Error(err.error || 'Preview failed');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  return { url, revoke: () => URL.revokeObjectURL(url) };
 };
 export const downloadExcel = async (id: number, invoiceNumber: string) => {
   const blob = await request(`/invoices/${id}/excel`);
