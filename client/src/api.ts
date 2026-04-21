@@ -62,6 +62,7 @@ export interface InvoiceCopy {
 export interface DashboardData {
   stats: {
     total_invoices: number;
+    total_billed: number;
     total_paid: number;
     total_outstanding: number;
     total_unpaid: number;

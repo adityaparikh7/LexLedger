@@ -5,9 +5,10 @@ import Invoices from './pages/Invoices';
 import InvoiceForm from './pages/InvoiceForm';
 import Clients from './pages/Clients';
 import Settings from './pages/Settings';
+import Export from './pages/Export';
 
 import { ToastContext, type Toast } from './context/ToastContext';
-import { Menu, Scale, X, BarChart3, FileText, PlusCircle, Users, Settings as SettingsIcon, CheckCircle, XCircle, Info } from 'lucide-react';
+import { Menu, Scale, X, BarChart3, FileText, PlusCircle, Users, Settings as SettingsIcon, CheckCircle, XCircle, Info, Download } from 'lucide-react';
 
 function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -74,6 +75,10 @@ function App() {
                 <span className="nav-icon"><Users size={18} /></span>
                 <span>Clients</span>
               </NavLink>
+              <NavLink to="/export" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)}>
+                <span className="nav-icon"><Download size={18} /></span>
+                <span>Export records</span>
+              </NavLink>
               <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)}>
                 <span className="nav-icon"><SettingsIcon size={18} /></span>
                 <span>Settings</span>
@@ -89,6 +94,7 @@ function App() {
               <Route path="/invoices/new" element={<InvoiceForm />} />
               <Route path="/invoices/:id/edit" element={<InvoiceForm />} />
               <Route path="/clients" element={<Clients />} />
+              <Route path="/export" element={<Export />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </main>

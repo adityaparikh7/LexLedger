@@ -7,6 +7,7 @@ router.get('/', (_req: Request, res: Response) => {
     const stats = db.prepare(`
       SELECT
         COUNT(*) as total_invoices,
+        COALESCE(SUM(CASE WHEN status != 'cancelled' THEN total ELSE 0 END), 0) as total_billed,
         COALESCE(SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END), 0) as total_paid,
         COALESCE(SUM(CASE WHEN status IN ('sent', 'draft', 'unpaid') THEN total ELSE 0 END), 0) as total_outstanding,
         COALESCE(SUM(CASE WHEN status = 'unpaid' THEN total ELSE 0 END), 0) as total_unpaid,
