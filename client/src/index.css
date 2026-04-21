@@ -633,6 +633,66 @@ td.sticky-right::before {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
 }
+/* ========== PDF Preview Modal ========== */
+.modal-pdf {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  width: 95vw;
+  max-width: 1100px;
+  height: 92vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: scaleIn 0.2s ease-out;
+  overflow: hidden;
+}
+.modal-pdf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(to right, var(--bg-secondary), var(--bg-card));
+  flex-shrink: 0;
+}
+.modal-pdf-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-heading);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal-pdf-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.modal-pdf-body {
+  flex: 1;
+  position: relative;
+  background: #525659;
+}
+.modal-pdf-body iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.modal-pdf-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #525659;
+  color: #ccc;
+  font-size: 14px;
+}
+
 /* ========== Toast Notifications ========== */
 .toast-container {
   position: fixed;

@@ -115,6 +115,9 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
     .replace('{{signature_name}}', escapeHTML(profile.signature_name))
     .replace('{{signature_full}}', escapeHTML(profile.signature_full))
     .replace('{{client_name}}', escapeHTML(invoice.client_name ?? ''))
+    .replace('{{client_address_block}}', invoice.client_address
+      ? `<br/><span style="font-size:12px; font-weight: normal;">${escapeHTML(invoice.client_address).replace(/\n/g, '<br/>')}</span>`
+      : '')
     .replace('{{invoice_number}}', escapeHTML(invoice.invoice_number ?? ''))
     .replace('{{date}}', formatDate(invoice.date)) // Already formatted date, safe
     .replace('{{case_details}}', caseDetailsHtml) // Already escaped in its parts

@@ -3,10 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   getInvoices, getClients, deleteInvoice, updateInvoiceStatus,
   downloadPDF, downloadExcel, downloadExportExcel, downloadBulkPDFs, sendInvoice, sendReminder,
+  fetchPDFPreviewUrl,
   type Invoice, type Payment, type Client
 } from '../api';
 import { useToast } from '../context/ToastContext';
-import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, BarChart2, X, Loader2, Check, Calendar, Download, FileDown, ArchiveRestoreIcon, Users, FileArchive } from 'lucide-react';
+import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, BarChart2, X, Loader2, Check, Calendar, Download, FileDown, ArchiveRestoreIcon, Users, FileArchive, Eye } from 'lucide-react';
 
 interface FormPayment {
   date: string;
@@ -27,6 +28,11 @@ export default function Invoices() {
   const [paymentModal, setPaymentModal] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
   const [paymentEntries, setPaymentEntries] = useState<FormPayment[]>([]);
   const [submittingPayment, setSubmittingPayment] = useState(false);
+
+  // PDF Preview modal state
+  const [previewModal, setPreviewModal] = useState<{ open: boolean; invoice: Invoice | null; blobUrl: string | null; loading: boolean }>(
+    { open: false, invoice: null, blobUrl: null, loading: false }
+  );
 
   // Export modal state
   const [exportModal, setExportModal] = useState(false);
@@ -157,6 +163,22 @@ export default function Invoices() {
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     }
+  };
+
+  const handleOpenPreview = async (inv: Invoice) => {
+    setPreviewModal({ open: true, invoice: inv, blobUrl: null, loading: true });
+    try {
+      const { url } = await fetchPDFPreviewUrl(inv.id);
+      setPreviewModal(prev => ({ ...prev, blobUrl: url, loading: false }));
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
+      setPreviewModal({ open: false, invoice: null, blobUrl: null, loading: false });
+    }
+  };
+
+  const handleClosePreview = () => {
+    if (previewModal.blobUrl) URL.revokeObjectURL(previewModal.blobUrl);
+    setPreviewModal({ open: false, invoice: null, blobUrl: null, loading: false });
   };
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '—';
@@ -367,6 +389,9 @@ export default function Invoices() {
                       <div className="btn-group">
                         <button className="btn-icon btn-icon-blue" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
                           <Edit2 size={18} />
+                        </button>
+                        <button className="btn-icon" title="Preview PDF" style={{ color: 'var(--text-secondary)' }} onClick={() => handleOpenPreview(inv)}>
+                          <Eye size={18} />
                         </button>
                         <button className="btn-icon btn-icon-green" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date)}>
                           <FileDown size={18} />
@@ -797,6 +822,61 @@ export default function Invoices() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* PDF Preview Modal */}
+      {previewModal.open && previewModal.invoice && (
+        <div className="modal-overlay" onClick={handleClosePreview}>
+          <div className="modal-pdf" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-pdf-toolbar">
+              <div className="modal-pdf-title">
+                <FileText size={18} style={{ color: 'var(--accent-blue)' }} />
+                <span>
+                  Fee Memo&nbsp;
+                  <strong>{previewModal.invoice.invoice_number}</strong>
+                  &nbsp;—&nbsp;{previewModal.invoice.client_name}
+                </span>
+              </div>
+              <div className="modal-pdf-actions">
+                <button
+                  className="btn btn-primary btn-sm"
+                  style={{ gap: 6 }}
+                  onClick={() => downloadPDF(
+                    previewModal.invoice!.id,
+                    previewModal.invoice!.invoice_number,
+                    previewModal.invoice!.client_name,
+                    previewModal.invoice!.date,
+                  )}
+                  disabled={previewModal.loading}
+                  title="Download PDF"
+                >
+                  <FileDown size={15} /> Download
+                </button>
+                <button
+                  className="btn-icon"
+                  onClick={handleClosePreview}
+                  title="Close preview"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            <div className="modal-pdf-body">
+              {previewModal.loading && (
+                <div className="modal-pdf-loading">
+                  <div className="spinner" style={{ borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)', borderTopColor: '#fff', width: 36, height: 36 }} />
+                  <span>Generating preview…</span>
+                </div>
+              )}
+              {previewModal.blobUrl && (
+                <iframe
+                  src={previewModal.blobUrl}
+                  title={`Preview – ${previewModal.invoice.invoice_number}`}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
