@@ -112,7 +112,12 @@ async function request(url: string, options?: RequestInit) {
   return res.json();
 }
 // Dashboard
-export const getDashboard = (): Promise<DashboardData> => request('/dashboard');
+export const getDashboard = (timeFilter: string = 'all', startDate?: string, endDate?: string): Promise<DashboardData> => {
+  const query = new URLSearchParams({ timeFilter });
+  if (startDate) query.set('startDate', startDate);
+  if (endDate) query.set('endDate', endDate);
+  return request(`/dashboard?${query.toString()}`);
+};
 // Clients
 export const getClients = (): Promise<Client[]> => request('/clients');
 export const getClient = (id: number): Promise<Client> => request(`/clients/${id}`);

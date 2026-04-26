@@ -6,19 +6,26 @@ import { Banknote, ClipboardList, Wallet, FileText, Edit2, CheckCircle, Download
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [timeFilter, setTimeFilter] = useState('all');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const navigate = useNavigate();
   const { addToast } = useToast();
+
   const fetchData = useCallback(async () => {
     try {
-      const result = await getDashboard();
+      setLoading(true);
+      const result = await getDashboard(timeFilter, customStartDate, customEndDate);
       setData(result);
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, timeFilter, customStartDate, customEndDate]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
+
   const handleMarkPaid = async (id: number) => {
     try {
       await updateInvoiceStatus(id, 'paid');
@@ -28,9 +35,11 @@ export default function Dashboard() {
       addToast((err as Error).message, 'error');
     }
   };
-  if (loading) {
+
+  if (loading && !data) {
     return <div className="loading-center"><div className="spinner"></div></div>;
   }
+
   const stats = data?.stats;
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '—';
@@ -46,9 +55,42 @@ export default function Dashboard() {
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Overview of your billing activity</p>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
-          + New Invoice
-        </button>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <select 
+            className="form-select" 
+            value={timeFilter} 
+            onChange={(e) => setTimeFilter(e.target.value)}
+            style={{ minWidth: '170px', margin: 0, padding: '10px' }}
+          >
+            <option value="all">All Time</option>
+            <option value="month">This Month</option>
+            <option value="quarter">This Quarter</option>
+            <option value="year">This Financial Year</option>
+            <option value="custom">Custom Date Range</option>
+          </select>
+          {timeFilter === 'custom' && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input 
+                type="date" 
+                className="form-input" 
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                style={{ padding: '8px 12px', margin: 0, minWidth: '130px' }}
+              />
+              <span style={{ color: 'var(--text-secondary)' }}>to</span>
+              <input 
+                type="date" 
+                className="form-input" 
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                style={{ padding: '8px 12px', margin: 0, minWidth: '130px' }}
+              />
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
+            + New Invoice
+          </button>
+        </div>
       </div>
       {/* Stats Grid */}
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
