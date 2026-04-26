@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getDashboard, type DashboardData } from '../api';
+import { getDashboard, type DashboardData, type Invoice, downloadPDF, updateInvoiceStatus  } from '../api';
 import { useToast } from '../context/ToastContext';
-import { Banknote, ClipboardList, Users, Wallet } from 'lucide-react';
+import { Banknote, ClipboardList, Wallet, FileText, Edit2, CheckCircle, Download } from 'lucide-react';
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,25 +19,25 @@ export default function Dashboard() {
     }
   }, [addToast]);
   useEffect(() => { fetchData(); }, [fetchData]);
-  // const handleMarkPaid = async (id: number) => {
-  //   try {
-  //     await updateInvoiceStatus(id, 'paid');
-  //     addToast('Invoice marked as paid', 'success');
-  //     fetchData();
-  //   } catch (err: unknown) {
-  //     addToast((err as Error).message, 'error');
-  //   }
-  // };
+  const handleMarkPaid = async (id: number) => {
+    try {
+      await updateInvoiceStatus(id, 'paid');
+      addToast('Invoice marked as paid', 'success');
+      fetchData();
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
+    }
+  };
   if (loading) {
     return <div className="loading-center"><div className="spinner"></div></div>;
   }
   const stats = data?.stats;
-  // const formatDate = (dateStr: string | null) => {
-  //   if (!dateStr) return '—';
-  //   const [year, month, day] = dateStr.split('T')[0].split('-');
-  //   if (year && month && day) return `${day}/${month}/${year}`;
-  //   return dateStr;
-  // };
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return '—';
+    const [year, month, day] = dateStr.split('T')[0].split('-');
+    if (year && month && day) return `${day}/${month}/${year}`;
+    return dateStr;
+  };
 
   return (
     <div>
@@ -72,11 +72,11 @@ export default function Dashboard() {
       </div>
       {/* Status Summary */}
       <div className="stats-grid" style={{ marginBottom: 32 }}>
-        {/* <div className="stat-card green">
-          <div className="stat-icon"><Users size={28} /></div>
+        <div className="stat-card green">
+          {/* <div className="stat-icon"><Users size={28} /></div> */}
           <div className="stat-value">{data?.totalClients || 0}</div>
           <div className="stat-label">Clients</div>
-        </div> */}
+        </div>
         <div className="stat-card blue">
           <div className="stat-value">{stats?.total_invoices || 0}</div>
           <div className="stat-label">Total Invoices</div>
@@ -90,17 +90,17 @@ export default function Dashboard() {
           <div className="stat-value">{stats?.unpaid_count || 0}</div>
           <div className="stat-label">Unpaid Invoices</div>
         </div>
-        {/* <div className="stat-card blue">
+        <div className="stat-card blue">
           <div className="stat-value">{stats?.sent_count || 0}</div>
           <div className="stat-label">Sent</div>
-        </div> */}
-        {/* <div className="stat-card amber">
+        </div>
+        <div className="stat-card amber">
           <div className="stat-value">{stats?.draft_count || 0}</div>
           <div className="stat-label">Drafts</div>
-        </div> */}
+        </div>
       </div>
       {/* Recent Invoices */}
-      {/* <div className="table-container">
+      <div className="table-container">
         <div className="table-header">
           <h3 className="table-title">Recent Invoices</h3>
           <button className="btn btn-outline btn-sm" onClick={() => navigate('/invoices')}>
@@ -147,7 +147,7 @@ export default function Dashboard() {
             <div className="empty-subtext">Create your first invoice to get started</div>
           </div>
         )}
-      </div> */}
+      </div>
     </div>
   );
 }

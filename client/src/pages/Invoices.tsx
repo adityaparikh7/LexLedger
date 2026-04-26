@@ -7,7 +7,7 @@ import {
   type Invoice, type Payment
 } from '../api';
 import { useToast } from '../context/ToastContext';
-import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, X, Loader2, Check, Download, FileDown, Eye } from 'lucide-react';
+import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, X, Loader2, Check, FileDown, Eye } from 'lucide-react';
 
 interface FormPayment {
   date: string;
