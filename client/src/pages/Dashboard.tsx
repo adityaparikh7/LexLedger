@@ -164,7 +164,7 @@ export default function Dashboard() {
           {preferences.paid && (
             <div className="stat-card green">
               <div className="stat-value">{stats?.paid_count || 0}</div>
-              <div className="stat-label">Paid</div>
+              <div className="stat-label">Paid Invoices</div>
             </div>
           )}
           {preferences.unpaid && (
