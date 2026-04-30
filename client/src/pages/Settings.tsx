@@ -76,7 +76,7 @@ export default function Settings() {
   };
 
   const handleDashboardPrefChange = (key: keyof typeof defaultDashboardPreferences) => {
-    setDashboardPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
+    setDashboardPrefs((prev: typeof defaultDashboardPreferences) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleSave = async () => {

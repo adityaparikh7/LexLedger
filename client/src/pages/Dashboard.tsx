@@ -23,7 +23,7 @@ export default function Dashboard() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   
-  const [preferences, setPreferences] = useState(() => {
+  const [preferences] = useState(() => {
     const saved = localStorage.getItem('dashboardPreferences');
     if (saved) {
       try {
