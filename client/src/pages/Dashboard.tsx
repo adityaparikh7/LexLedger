@@ -3,12 +3,38 @@ import { useNavigate } from 'react-router-dom';
 import { getDashboard, type DashboardData, type Invoice, downloadPDF, updateInvoiceStatus  } from '../api';
 import { useToast } from '../context/ToastContext';
 import { Banknote, ClipboardList, Wallet, FileText, Edit2, CheckCircle, Download } from 'lucide-react';
+
+const defaultPreferences = {
+  totalBilled: true,
+  totalReceived: true,
+  outstanding: true,
+  clients: true,
+  totalInvoices: true,
+  paid: true,
+  unpaid: true,
+  sent: true,
+  drafts: true
+};
+
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeFilter, setTimeFilter] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  
+  const [preferences, setPreferences] = useState(() => {
+    const saved = localStorage.getItem('dashboardPreferences');
+    if (saved) {
+      try {
+        return { ...defaultPreferences, ...JSON.parse(saved) };
+      } catch (e) {
+        return defaultPreferences;
+      }
+    }
+    return defaultPreferences;
+  });
+
   const navigate = useNavigate();
   const { addToast } = useToast();
 
@@ -92,53 +118,76 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
-      {/* Stats Grid */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-        <div className="stat-card blue">
-          <div className="stat-icon"><Wallet size={28} /></div>
-          <div className="stat-value">₹{stats?.total_billed?.toLocaleString('en-IN') || '0'}</div>
-          <div className="stat-label">Total Billed</div>
+
+      {/* Stats Grid 1 */}
+      {(preferences.totalBilled || preferences.totalReceived || preferences.outstanding) && (
+        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          {preferences.totalBilled && (
+            <div className="stat-card blue">
+              <div className="stat-icon"><Wallet size={28} /></div>
+              <div className="stat-value">₹{stats?.total_billed?.toLocaleString('en-IN') || '0'}</div>
+              <div className="stat-label">Total Billed</div>
+            </div>
+          )}
+          {preferences.totalReceived && (
+            <div className="stat-card green">
+              <div className="stat-icon"><Banknote size={28} /></div>
+              <div className="stat-value">₹{stats?.total_paid?.toLocaleString('en-IN') || '0'}</div>
+              <div className="stat-label">Total Received</div>
+            </div>
+          )}
+          {preferences.outstanding && (
+            <div className="stat-card amber">
+              <div className="stat-icon"><ClipboardList size={28} /></div>
+              <div className="stat-value">₹{stats?.total_outstanding?.toLocaleString('en-IN') || '0'}</div>
+              <div className="stat-label">Outstanding</div>
+            </div>
+          )}
         </div>
-        <div className="stat-card green">
-          <div className="stat-icon"><Banknote size={28} /></div>
-          <div className="stat-value">₹{stats?.total_paid?.toLocaleString('en-IN')}</div>
-          <div className="stat-label">Total Received</div>
+      )}
+
+      {/* Stats Grid 2 */}
+      {(preferences.clients || preferences.totalInvoices || preferences.paid || preferences.unpaid || preferences.sent || preferences.drafts) && (
+        <div className="stats-grid" style={{ marginBottom: 32 }}>
+          {preferences.clients && (
+            <div className="stat-card green">
+              <div className="stat-value">{data?.totalClients || 0}</div>
+              <div className="stat-label">Clients</div>
+            </div>
+          )}
+          {preferences.totalInvoices && (
+            <div className="stat-card blue">
+              <div className="stat-value">{stats?.total_invoices || 0}</div>
+              <div className="stat-label">Total Invoices</div>
+            </div>
+          )}
+          {preferences.paid && (
+            <div className="stat-card green">
+              <div className="stat-value">{stats?.paid_count || 0}</div>
+              <div className="stat-label">Paid</div>
+            </div>
+          )}
+          {preferences.unpaid && (
+            <div className="stat-card red">
+              <div className="stat-value">{stats?.unpaid_count || 0}</div>
+              <div className="stat-label">Unpaid Invoices</div>
+            </div>
+          )}
+          {preferences.sent && (
+            <div className="stat-card blue">
+              <div className="stat-value">{stats?.sent_count || 0}</div>
+              <div className="stat-label">Sent</div>
+            </div>
+          )}
+          {preferences.drafts && (
+            <div className="stat-card amber">
+              <div className="stat-value">{stats?.draft_count || 0}</div>
+              <div className="stat-label">Drafts</div>
+            </div>
+          )}
         </div>
-        <div className="stat-card amber">
-          <div className="stat-icon"><ClipboardList size={28} /></div>
-          <div className="stat-value">₹{stats?.total_outstanding?.toLocaleString('en-IN')}</div>
-          <div className="stat-label">Outstanding</div>
-        </div>
-        
-       
-      </div>
-      {/* Status Summary */}
-      <div className="stats-grid" style={{ marginBottom: 32 }}>
-        <div className="stat-card green">
-          <div className="stat-value">{data?.totalClients || 0}</div>
-          <div className="stat-label">Clients</div>
-        </div>
-        <div className="stat-card blue">
-          <div className="stat-value">{stats?.total_invoices || 0}</div>
-          <div className="stat-label">Total Invoices</div>
-        </div>
-        <div className="stat-card green">
-          <div className="stat-value">{stats?.paid_count || 0}</div>
-          <div className="stat-label">Paid</div>
-        </div>
-        <div className="stat-card red">
-          <div className="stat-value">{stats?.unpaid_count || 0}</div>
-          <div className="stat-label">Unpaid Invoices</div>
-        </div>
-        <div className="stat-card blue">
-          <div className="stat-value">{stats?.sent_count || 0}</div>
-          <div className="stat-label">Sent</div>
-        </div>
-        <div className="stat-card amber">
-          <div className="stat-value">{stats?.draft_count || 0}</div>
-          <div className="stat-label">Drafts</div>
-        </div>
-      </div>
+      )}
+
       {/* Recent Invoices */}
       <div className="table-container">
         <div className="table-header">

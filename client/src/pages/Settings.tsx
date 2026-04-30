@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { getFirmProfile, updateFirmProfile, type FirmProfile } from '../api';
 import { ToastContext } from '../context/ToastContext';
-import { Hand, Landmark, Building, PenTool, Mail, Monitor, FileText, Info, Save, Loader2, Check } from 'lucide-react';
+import { Hand, Landmark, Building, PenTool, Mail, Monitor, FileText, Info, Save, Loader2, Check, LayoutDashboard } from 'lucide-react';
 
 const EMPTY_PROFILE: FirmProfile = {
   firm_name: '',
@@ -22,6 +22,18 @@ const EMPTY_PROFILE: FirmProfile = {
   email_client: 'apple_mail',
 };
 
+const defaultDashboardPreferences = {
+  totalBilled: true,
+  totalReceived: true,
+  outstanding: true,
+  clients: true,
+  totalInvoices: true,
+  paid: true,
+  unpaid: true,
+  sent: true,
+  drafts: true
+};
+
 export default function Settings() {
   const { addToast } = useContext(ToastContext);
   const [profile, setProfile] = useState<FirmProfile>(EMPTY_PROFILE);
@@ -29,6 +41,19 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [savedProfile, setSavedProfile] = useState<FirmProfile>(EMPTY_PROFILE);
+  
+  const [dashboardPrefs, setDashboardPrefs] = useState(() => {
+    const saved = localStorage.getItem('dashboardPreferences');
+    if (saved) {
+      try {
+        return { ...defaultDashboardPreferences, ...JSON.parse(saved) };
+      } catch (e) {
+        return defaultDashboardPreferences;
+      }
+    }
+    return defaultDashboardPreferences;
+  });
+  const [savedDashboardPrefs, setSavedDashboardPrefs] = useState(dashboardPrefs);
 
   useEffect(() => {
     getFirmProfile()
@@ -41,12 +66,17 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    const changed = JSON.stringify(profile) !== JSON.stringify(savedProfile);
+    const changed = JSON.stringify(profile) !== JSON.stringify(savedProfile) ||
+                    JSON.stringify(dashboardPrefs) !== JSON.stringify(savedDashboardPrefs);
     setHasChanges(changed);
-  }, [profile, savedProfile]);
+  }, [profile, savedProfile, dashboardPrefs, savedDashboardPrefs]);
 
   const handleChange = (field: keyof FirmProfile, value: string | number) => {
     setProfile((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleDashboardPrefChange = (key: keyof typeof defaultDashboardPreferences) => {
+    setDashboardPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleSave = async () => {
@@ -55,7 +85,11 @@ export default function Settings() {
       const updated = await updateFirmProfile(profile);
       setProfile(updated);
       setSavedProfile(updated);
-      addToast('Firm profile saved successfully', 'success');
+      
+      localStorage.setItem('dashboardPreferences', JSON.stringify(dashboardPrefs));
+      setSavedDashboardPrefs(dashboardPrefs);
+      
+      addToast('Settings saved successfully', 'success');
     } catch (err: any) {
       addToast(err.message, 'error');
     } finally {
@@ -74,7 +108,7 @@ export default function Settings() {
         </div>
         <div className="btn-group">
           {hasChanges && (
-            <button className="btn btn-outline" onClick={() => { setProfile(savedProfile); }}>
+            <button className="btn btn-outline" onClick={() => { setProfile(savedProfile); setDashboardPrefs(savedDashboardPrefs); }}>
               Discard
             </button>
           )}
@@ -84,7 +118,7 @@ export default function Settings() {
             disabled={saving || !hasChanges}
             style={{ opacity: saving || !hasChanges ? 0.5 : 1 }}
           >
-            {saving ? <><Loader2 size={16} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 16, height: 16 }} /> Saving…</> : <><Save size={16} /> Save Profile</>}
+            {saving ? <><Loader2 size={16} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 16, height: 16 }} /> Saving…</> : <><Save size={16} /> Save Changes</>}
           </button>
         </div>
       </div>
@@ -261,7 +295,9 @@ export default function Settings() {
                 </div>
               </div>
             </div>
-          </div>          {/* Email Configuration */}
+          </div>          
+
+          {/* Email Configuration */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="settings-section" style={{ marginBottom: 0 }}>
               <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Mail size={20} /> Email Client</h3>
@@ -340,6 +376,54 @@ export default function Settings() {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+          </div>
+
+          {/* Dashboard Layout */}
+          <div className="card" style={{ marginBottom: 24 }}>
+            <div className="settings-section" style={{ marginBottom: 0 }}>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LayoutDashboard size={20} /> Dashboard Layout</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: -8 }}>
+                Select which statistic tiles you want to see on your dashboard.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.totalBilled} onChange={() => handleDashboardPrefChange('totalBilled')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Total Billed</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.totalReceived} onChange={() => handleDashboardPrefChange('totalReceived')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Total Received</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.outstanding} onChange={() => handleDashboardPrefChange('outstanding')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Outstanding</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.clients} onChange={() => handleDashboardPrefChange('clients')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Clients</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.totalInvoices} onChange={() => handleDashboardPrefChange('totalInvoices')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Total Invoices</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.paid} onChange={() => handleDashboardPrefChange('paid')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Paid</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.unpaid} onChange={() => handleDashboardPrefChange('unpaid')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Unpaid Invoices</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.sent} onChange={() => handleDashboardPrefChange('sent')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Sent</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.drafts} onChange={() => handleDashboardPrefChange('drafts')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Drafts</span>
+                </label>
               </div>
             </div>
           </div>
