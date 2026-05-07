@@ -1,9 +1,10 @@
-import { exec } from 'child_process';
+import { execFile, exec } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
 
+const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 
 export type EmailClient = 'apple_mail' | 'outlook' | 'mailto';
@@ -43,7 +44,7 @@ tell application "Mail"
 end tell
   `.trim();
 
-  await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
+  await execFileAsync('osascript', ['-e', script]);
 }
 
 /** Compose an email in Microsoft Outlook via AppleScript, optionally with a PDF attachment. */
@@ -64,14 +65,14 @@ tell application "Microsoft Outlook"
 end tell
   `.trim();
 
-  await execAsync(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
+  await execFileAsync('osascript', ['-e', script]);
 }
 
 /** Open a mailto: link using the system default handler. Cannot attach files. */
 async function composeWithMailto(opts: ComposeEmailOptions): Promise<void> {
   const { to, subject, body } = opts;
   const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  await execAsync(`open "${mailto}"`);
+  await execFileAsync('open', [mailto]);
 }
 
 /**

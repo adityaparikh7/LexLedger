@@ -17,7 +17,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const isElectron = process.env.ELECTRON === '1';
 // Middleware
-app.use(cors());
+const corsOptions = {
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'file://'],
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 // API Routes
 app.use('/api/clients', clientsRouter);
@@ -34,8 +38,8 @@ if (!isElectron) {
 }
 // Initialize DB and start server
 initDatabase();
-app.listen(PORT, () => {
-  console.log(`🚀 LexLedger server running on http://localhost:${PORT}`);
+app.listen(PORT as number, '127.0.0.1', () => {
+  console.log(`🚀 LexLedger server running on http://127.0.0.1:${PORT}`);
   // Signal to Electron parent process that the server is ready
   if (isElectron && process.send) {
     process.send('server-ready');

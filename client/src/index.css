@@ -67,6 +67,19 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  position: relative;
+}
+
+/* macOS Electron window drag region */
+.app-layout::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 16px; /* Leave space for native scrollbar */
+  height: 48px;
+  -webkit-app-region: drag;
+  z-index: 30;
 }
 /* ========== Sidebar ========== */
 .sidebar {
@@ -82,7 +95,7 @@ body {
   z-index: 10;
 }
 .sidebar-header {
-  padding: 24px 20px;
+  padding: 40px 20px 24px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -91,6 +104,9 @@ body {
   align-items: center;
   gap: 12px;
   text-decoration: none;
+  position: relative;
+  z-index: 40; /* Above drag region */
+  -webkit-app-region: no-drag;
 }
 .sidebar-logo .logo-icon {
   width: 40px;
@@ -153,7 +169,7 @@ body {
 .main-content {
   flex: 1;
   overflow-y: auto;
-  padding: 32px;
+  padding: 48px 32px 32px 32px;
   background: var(--bg-primary);
   color: var(--text-primary);
   scroll-behavior: smooth;
