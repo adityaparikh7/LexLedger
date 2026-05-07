@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  getClients, getInvoice, createInvoice, updateInvoice, createClient,
+  getClients, getInvoice, createInvoice, updateInvoice, createClient, updateInvoiceStatus,
   type Client, type LineItem, type Payment
 } from '../api';
 import { useToast } from '../context/ToastContext';
@@ -215,9 +215,15 @@ export default function InvoiceForm() {
       };
       if (isEditing) {
         await updateInvoice(Number(id), payload);
+        if (remainingBalance <= 0.01 && (totalReceived > 0 || totalTds > 0)) {
+          await updateInvoiceStatus(Number(id), 'paid');
+        }
         addToast('Invoice updated!', 'success');
       } else {
-        await createInvoice(payload);
+        const result = await createInvoice(payload);
+        if (remainingBalance <= 0.01 && (totalReceived > 0 || totalTds > 0)) {
+          await updateInvoiceStatus(result.id, 'paid');
+        }
         addToast('Invoice created!', 'success');
       }
       navigate('/invoices');
