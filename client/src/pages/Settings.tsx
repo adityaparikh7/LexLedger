@@ -307,6 +307,12 @@ export default function Settings() {
               <div style={{ display: 'grid', gap: 10 }}>
                 {[
                   {
+                    key: 'smtp' as const,
+                    label: 'SMTP (Nodemailer)',
+                    desc: 'Send emails directly via your own SMTP server',
+                    badge: 'Direct Send',
+                  },
+                  {
                     key: 'apple_mail' as const,
                     label: 'Apple Mail',
                     desc: 'Opens Mail.app with the invoice PDF auto-attached',
@@ -377,6 +383,56 @@ export default function Settings() {
                   );
                 })}
               </div>
+
+              {profile.email_client === 'smtp' && (
+                <div style={{ marginTop: 24, padding: '16px', background: 'var(--bg-tertiary, rgba(0,0,0,0.03))', borderRadius: 'var(--radius-sm)' }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>SMTP Configuration</h4>
+                  <div className="form-row">
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label className="form-label">SMTP Host</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. smtp.gmail.com"
+                        value={profile.smtp_host}
+                        onChange={(e) => handleChange('smtp_host', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label className="form-label">SMTP Port</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        placeholder="587"
+                        value={profile.smtp_port}
+                        onChange={(e) => handleChange('smtp_port', parseInt(e.target.value) || 587)}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">SMTP User</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="user@example.com"
+                        value={profile.smtp_user}
+                        onChange={(e) => handleChange('smtp_user', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">SMTP Password</label>
+                      <input
+                        type="password"
+                        className="form-input"
+                        placeholder={profile.smtp_pass ? '********' : 'Enter password...'}
+                        value={profile.smtp_pass}
+                        onChange={(e) => handleChange('smtp_pass', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

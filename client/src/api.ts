@@ -90,7 +90,7 @@ export interface FirmProfile {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
-  email_client: 'apple_mail' | 'outlook' | 'mailto';
+  email_client: 'smtp' | 'apple_mail' | 'outlook' | 'mailto';
 }
 async function request(url: string, options?: RequestInit) {
   const res = await fetch(`${API_BASE}${url}`, {

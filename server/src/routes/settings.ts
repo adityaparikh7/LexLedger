@@ -19,7 +19,7 @@ export interface FirmProfile {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
-  email_client: 'apple_mail' | 'outlook' | 'mailto';
+  email_client: 'smtp' | 'apple_mail' | 'outlook' | 'mailto';
   updated_at: string;
 }
 
@@ -82,7 +82,7 @@ router.put('/firm-profile', (req: Request, res: Response) => {
 
     // Only update password if it's not the masked value
     const currentProfile = getFirmProfile();
-    const finalSmtpPass = (smtp_pass === '********' || !smtp_pass) 
+    const finalSmtpPass = (smtp_pass === '********' || smtp_pass === undefined) 
       ? currentProfile.smtp_pass 
       : smtp_pass;
 
