@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  getInvoices, deleteInvoice, updateInvoiceStatus,
+  getInvoices, getInvoice, deleteInvoice, updateInvoiceStatus,
   downloadPDF, downloadExcel, sendInvoice, sendReminder,
   fetchPDFPreviewUrl,
   type Invoice, type Payment
@@ -57,12 +57,39 @@ export default function Invoices() {
   };
   const handleStatusChange = async (inv: Invoice, newStatus: string) => {
     if (newStatus === 'paid') {
-      setPaymentModal({ open: true, invoice: inv });
-      setPaymentEntries([{
-        date: new Date().toISOString().split('T')[0],
-        amount_received: String(inv.total),
-        tds_amount: '0',
-      }]);
+      try {
+        const fullInv = await getInvoice(inv.id);
+        setPaymentModal({ open: true, invoice: fullInv });
+        
+        if (fullInv.payments && fullInv.payments.length > 0) {
+          const entries = fullInv.payments.map(p => ({
+            date: p.date,
+            amount_received: String(p.amount_received),
+            tds_amount: String(p.tds_amount)
+          }));
+          
+          const totalReceived = fullInv.payments.reduce((sum, p) => sum + (p.amount_received || 0), 0);
+          const totalTds = fullInv.payments.reduce((sum, p) => sum + (p.tds_amount || 0), 0);
+          const balance = fullInv.total - totalReceived - totalTds;
+          
+          if (balance > 0.01) {
+            entries.push({
+              date: new Date().toISOString().split('T')[0],
+              amount_received: String(balance),
+              tds_amount: '0'
+            });
+          }
+          setPaymentEntries(entries);
+        } else {
+          setPaymentEntries([{
+            date: new Date().toISOString().split('T')[0],
+            amount_received: String(fullInv.total),
+            tds_amount: '0',
+          }]);
+        }
+      } catch (err: unknown) {
+        addToast('Failed to load invoice details', 'error');
+      }
       return;
     }
     try {

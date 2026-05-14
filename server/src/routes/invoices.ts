@@ -4,6 +4,7 @@ import { generatePDF } from '../services/pdfGenerator';
 import { generateExcel } from '../services/excelGenerator';
 import { generateExportExcel } from '../services/exportGenerator';
 import { composeEmail, saveTempPDF, type EmailClient } from '../services/mailComposer';
+import { sendInvoiceEmail, sendReminderEmail } from '../services/emailService';
 import { getFirmProfile } from '../routes/settings';
 import archiver from 'archiver';
 import path from 'path';
@@ -276,7 +277,7 @@ router.put('/:id', (req: Request, res: Response) => {
   try {
     const existing = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id) as any;
     if (!existing) return res.status(404).json({ error: 'Invoice not found' });
-    const { client_id, invoice_number, date, date_paid, notes, tax_rate, line_items, created_at, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant, amount_received, tds_amount, payments } = req.body;
+    const { client_id, invoice_number, date, date_paid, status, notes, tax_rate, line_items, created_at, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant, amount_received, tds_amount, payments } = req.body;
     const taxRate = tax_rate ?? existing.tax_rate;
     let subtotal = 0;
     if (line_items) {
@@ -292,7 +293,7 @@ router.put('/:id', (req: Request, res: Response) => {
     const total = subtotal + taxAmount;
     const transaction = db.transaction(() => {
       db.prepare(`
-        UPDATE invoices SET client_id = ?, invoice_number = ?, date = ?, date_paid = ?, notes = ?,
+        UPDATE invoices SET client_id = ?, invoice_number = ?, date = ?, date_paid = ?, status = ?, notes = ?,
         case_name = ?, case_party1_type = ?, case_plaintiff = ?, case_party2_type = ?, case_defendant = ?,
         subtotal = ?, tax_rate = ?, tax_amount = ?, total = ?, amount_received = ?, tds_amount = ?,
         created_at = ?, updated_at = datetime('now')
@@ -301,16 +302,17 @@ router.put('/:id', (req: Request, res: Response) => {
         client_id || existing.client_id,
         invoice_number || existing.invoice_number,
         date || existing.date,
-        date_paid ?? existing.date_paid,
-        notes ?? existing.notes,
-        case_name ?? existing.case_name ?? null,
-        case_party1_type ?? existing.case_party1_type ?? null,
-        case_plaintiff ?? existing.case_plaintiff ?? null,
-        case_party2_type ?? existing.case_party2_type ?? null,
-        case_defendant ?? existing.case_defendant ?? null,
+        date_paid !== undefined ? date_paid : existing.date_paid,
+        status || existing.status,
+        notes !== undefined ? notes : existing.notes,
+        case_name !== undefined ? case_name : (existing.case_name ?? null),
+        case_party1_type !== undefined ? case_party1_type : (existing.case_party1_type ?? null),
+        case_plaintiff !== undefined ? case_plaintiff : (existing.case_plaintiff ?? null),
+        case_party2_type !== undefined ? case_party2_type : (existing.case_party2_type ?? null),
+        case_defendant !== undefined ? case_defendant : (existing.case_defendant ?? null),
         subtotal, taxRate, taxAmount, total,
-        amount_received ?? existing.amount_received ?? 0,
-        tds_amount ?? existing.tds_amount ?? 0,
+        amount_received !== undefined ? amount_received : (existing.amount_received ?? 0),
+        tds_amount !== undefined ? tds_amount : (existing.tds_amount ?? 0),
         created_at || existing.created_at,
         req.params.id
       );
@@ -496,14 +498,25 @@ router.post('/:id/send', async (req: Request, res: Response) => {
     const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(req.params.id) as any[];
     const pdfBuffer = await generatePDF(invoice, lineItems);
     const profile = getFirmProfile();
-    const firmName = profile.firm_name || 'Legal Billing';
+    const emailClient = profile.email_client || 'apple_mail';
+
+    if (emailClient === 'smtp') {
+      const result = await sendInvoiceEmail(invoice, pdfBuffer);
+      db.prepare("UPDATE invoices SET status = 'sent', updated_at = datetime('now') WHERE id = ? AND status = 'draft'").run(req.params.id);
+      return res.json({ 
+        success: true, 
+        autoAttached: true,
+        method: 'smtp',
+        messageId: result.messageId,
+        previewUrl: result.previewUrl
+      });
+    }
 
     // Save PDF to temp for the mail client to pick up
     const pdfFilename = `${buildFeeMemoName(invoice.invoice_number, invoice.client_name || 'Client', invoice.date || '')}.pdf`;
     const tempPath = saveTempPDF(pdfBuffer, pdfFilename);
 
     // Compose the email in the user's chosen mail client
-    const emailClient: EmailClient = profile.email_client || 'apple_mail';
     const subject = `Fee Memo ${invoice.invoice_number} - ₹${invoice.total.toFixed(2)}`;
     const body = `Dear ${invoice.client_name},\n\nPlease find attached fee memo for ₹${invoice.total.toFixed(2)}.\n\nFee Memo Number: ${invoice.invoice_number}\nDate: ${invoice.date}\nAmount Due: ₹${invoice.total.toFixed(2)}\n\n`;
 
@@ -536,7 +549,18 @@ router.post('/:id/remind', async (req: Request, res: Response) => {
 
     const profile = getFirmProfile();
     const firmName = profile.firm_name || 'Legal Billing';
-    const emailClient: EmailClient = profile.email_client || 'apple_mail';
+    const emailClient: EmailClient | 'smtp' = profile.email_client || 'apple_mail';
+
+    if (emailClient === 'smtp') {
+      const result = await sendReminderEmail(invoice);
+      return res.json({ 
+        message: 'Reminder sent via SMTP', 
+        method: 'smtp',
+        messageId: result.messageId,
+        previewUrl: result.previewUrl
+      });
+    }
+
     const subject = `Payment Reminder: Fee Memo ${invoice.invoice_number} - ₹${invoice.total.toFixed(2)}`;
     const body = `Dear ${invoice.client_name},\n\nI request you to kindly process payment of my pending fee memo.\n\nThe details of the pending fee memo are set out below:\n\nFee Memo Number: ${invoice.invoice_number}\nOriginal Date: ${invoice.date}\nAmount Due: ₹${invoice.total.toFixed(2)}\n\nPlease arrange payment at your earliest convenience. If you have already made the payment, please provide the payment details for updating my record.`;
 
