@@ -367,6 +367,12 @@ tbody tr:hover td.sticky-right {
   /* Match the row hover effect which is bg-glass-hover */
   background: #f7f7f7; 
 }
+/* Elevate the stacking context of the active row so the dropdown
+   paints above all subsequent rows (which have z-index: 1 and are
+   painted later in DOM order). */
+td.sticky-right.menu-open {
+  z-index: 50;
+}
 th.sticky-right::before,
 td.sticky-right::before {
   content: "";
@@ -505,6 +511,71 @@ td.sticky-right::before {
 .btn-group {
   display: flex;
   gap: 8px;
+}
+
+/* ========== Action Menu (row overflow dropdown) ========== */
+.action-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+@keyframes dropdown-fade-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 300;
+  min-width: 192px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 6px;
+  animation: dropdown-fade-in 0.12s ease;
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+  white-space: nowrap;
+}
+.dropdown-item:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+.dropdown-item.danger {
+  color: var(--accent-red);
+}
+.dropdown-item.danger:hover {
+  background: rgba(224, 122, 95, 0.12);
+  color: var(--accent-red);
+}
+.dropdown-item.amber {
+  color: var(--accent-amber);
+}
+.dropdown-item.amber:hover {
+  background: rgba(224, 122, 95, 0.1);
+  color: var(--accent-amber);
+}
+.dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
 }
 /* ========== Forms ========== */
 .form-group {
