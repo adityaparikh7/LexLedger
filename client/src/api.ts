@@ -95,6 +95,7 @@ export interface FirmProfile {
 async function request(url: string, options?: RequestInit) {
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
+    cache: 'no-store', // Prevent browser caching of API responses
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,

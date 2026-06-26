@@ -23,6 +23,14 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// Prevent browser caching of API responses (fixes stale data in Electron/Windows)
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 // API Routes
 app.use('/api/clients', clientsRouter);
 app.use('/api/invoices', invoicesRouter);
