@@ -20,6 +20,16 @@ mac:
   icon: build/icon.icns
   darkModeSupport: true
 
+# win:
+#   target:
+#     - target: nsis
+#       arch:
+#         - x64
+#   icon: build/icon.ico
+# nsis:
+#   oneClick: false
+#   allowToChangeInstallationDirectory: true
+
 # Files to include in the app.asar
 files:
   - "package.json"
