@@ -10,6 +10,19 @@ import Export from './pages/Export';
 import { ToastContext, type Toast } from './context/ToastContext';
 import { Menu, Scale, X, BarChart3, FileText, PlusCircle, Users, Settings as SettingsIcon, CheckCircle, XCircle, Info, Download } from 'lucide-react';
 
+declare global {
+  interface Window {
+    electronAPI?: {
+      isElectron?: boolean;
+      platform?: string;
+    };
+  }
+}
+
+const isMacElectron = typeof window !== 'undefined' && 
+  !!window.electronAPI?.isElectron && 
+  window.electronAPI?.platform === 'darwin';
+
 function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -25,7 +38,7 @@ function App() {
   return (
     <ToastContext.Provider value={{ addToast }}>
       <HashRouter>
-        <div className="app-layout">
+        <div className={`app-layout ${isMacElectron ? 'platform-mac-electron' : ''}`}>
           {/* Mobile Header */}
           <div className="mobile-header">
             <button className="btn-icon menu-button" onClick={() => setIsSidebarOpen(true)}>
