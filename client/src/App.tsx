@@ -23,6 +23,10 @@ const isMacElectron = typeof window !== 'undefined' &&
   !!window.electronAPI?.isElectron && 
   window.electronAPI?.platform === 'darwin';
 
+const isWinElectron = typeof window !== 'undefined' &&
+  !!window.electronAPI?.isElectron &&
+  window.electronAPI?.platform === 'win32';
+
 function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -38,7 +42,7 @@ function App() {
   return (
     <ToastContext.Provider value={{ addToast }}>
       <HashRouter>
-        <div className={`app-layout ${isMacElectron ? 'platform-mac-electron' : ''}`}>
+        <div className={`app-layout ${isMacElectron ? 'platform-mac-electron' : ''} ${isWinElectron ? 'platform-win-electron' : ''}`}>
           {/* Mobile Header */}
           <div className="mobile-header">
             <button className="btn-icon menu-button" onClick={() => setIsSidebarOpen(true)}>

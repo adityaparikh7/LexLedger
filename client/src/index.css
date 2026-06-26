@@ -81,6 +81,19 @@ body {
   -webkit-app-region: drag;
   z-index: 30;
 }
+
+/* Windows Electron window drag region */
+/* titleBarOverlay occupies the top-right ~150px — leave that area alone */
+.app-layout.platform-win-electron::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 150px; /* Leave space for min/max/close overlay controls */
+  height: 36px; /* Match titleBarOverlay height set in main.ts */
+  -webkit-app-region: drag;
+  z-index: 30;
+}
 /* ========== Sidebar ========== */
 .sidebar {
   width: 260px;
@@ -101,6 +114,9 @@ body {
 .platform-mac-electron .sidebar-header {
   padding: 40px 20px 24px;
 }
+.platform-win-electron .sidebar-header {
+  padding: 44px 20px 24px; /* Push content below the 36px drag zone */
+}
 
 .sidebar-logo {
   display: flex;
@@ -108,7 +124,8 @@ body {
   gap: 12px;
   text-decoration: none;
 }
-.platform-mac-electron .sidebar-logo {
+.platform-mac-electron .sidebar-logo,
+.platform-win-electron .sidebar-logo {
   position: relative;
   z-index: 40; /* Above drag region */
   -webkit-app-region: no-drag;
