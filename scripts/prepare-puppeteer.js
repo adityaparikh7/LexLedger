@@ -15,9 +15,19 @@ const PROJECT_ROOT = path.join(__dirname, '..');
 const TARGET_DIR = path.join(PROJECT_ROOT, 'puppeteer-cache');
 
 // Get the Puppeteer cache directory
-// Modern Puppeteer (v19+) uses ~/.cache/puppeteer by default
+// Modern Puppeteer (v19+) uses ~/.cache/puppeteer on macOS/Linux,
+// and %LOCALAPPDATA%\puppeteer\Cache on Windows
 const homeDir = require('os').homedir();
-const defaultCacheDir = path.join(homeDir, '.cache', 'puppeteer');
+let defaultCacheDir;
+if (process.platform === 'win32') {
+  defaultCacheDir = path.join(
+    process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local'),
+    'puppeteer',
+    'Cache'
+  );
+} else {
+  defaultCacheDir = path.join(homeDir, '.cache', 'puppeteer');
+}
 
 // Also check if PUPPETEER_CACHE_DIR is set
 const cacheDir = process.env.PUPPETEER_CACHE_DIR || defaultCacheDir;

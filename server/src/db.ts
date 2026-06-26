@@ -161,7 +161,7 @@ export function initDatabase(): void {
 
   // Migration: add email_client column to firm_profile
   try {
-    db.exec(`ALTER TABLE firm_profile ADD COLUMN email_client TEXT NOT NULL DEFAULT 'apple_mail'`);
+    db.exec(`ALTER TABLE firm_profile ADD COLUMN email_client TEXT NOT NULL DEFAULT 'mailto'`);
   } catch (_) {
     // Column already exists — ignore
   }

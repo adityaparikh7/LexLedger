@@ -72,7 +72,14 @@ end tell
 async function composeWithMailto(opts: ComposeEmailOptions): Promise<void> {
   const { to, subject, body } = opts;
   const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  await execFileAsync('open', [mailto]);
+  const platform = os.platform();
+  if (platform === 'win32') {
+    await execAsync(`start "" "${mailto}"`);
+  } else if (platform === 'linux') {
+    await execFileAsync('xdg-open', [mailto]);
+  } else {
+    await execFileAsync('open', [mailto]);
+  }
 }
 
 /**
