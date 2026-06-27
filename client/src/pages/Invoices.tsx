@@ -172,23 +172,46 @@ export default function Invoices() {
     }
   };
 
-  const handleSend = async (id: number) => {
+  const handleSend = async (inv: Invoice) => {
     try {
-      const result = await sendInvoice(id);
-      if (result.autoAttached) {
+      const result = await sendInvoice(inv.id);
+
+      if (result.composeUrl) {
+        // Browser-based client: open compose window in new tab
+        window.open(result.composeUrl, '_blank', 'noopener,noreferrer');
+        // Silently download the PDF so the user can attach it
+        await downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date);
+        addToast('PDF downloaded — attach it to the compose window that just opened', 'info');
+      } else if (result.autoAttached) {
         addToast('Invoice opened in mail client with PDF attached!', 'success');
+      } else if (result.pdfDownloaded) {
+        // Windows Outlook COM fallback: PDF was saved but COM failed; mailto opened
+        // Download the PDF so the user can attach it manually
+        await downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date);
+        addToast('Outlook automation unavailable — PDF downloaded, please attach it to the email manually', 'info');
       } else {
-        addToast('Mail client opened — please attach the downloaded PDF manually', 'info');
+        addToast('Mail client opened — please attach the PDF manually', 'info');
       }
+
       fetchInvoices();
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     }
   };
-  const handleRemind = async (id: number) => {
+
+  const handleRemind = async (inv: Invoice) => {
     try {
-      await sendReminder(id);
-      addToast('Reminder opened in mail client!', 'success');
+      const result = await sendReminder(inv.id);
+
+      if (result.composeUrl) {
+        // Browser-based client: open compose window in new tab (no PDF for reminders)
+        window.open(result.composeUrl, '_blank', 'noopener,noreferrer');
+        addToast('Reminder compose window opened in your browser', 'success');
+      } else if (result.autoAttached) {
+        addToast('Reminder opened in mail client!', 'success');
+      } else {
+        addToast('Reminder opened in mail client!', 'success');
+      }
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     }
@@ -331,7 +354,7 @@ export default function Invoices() {
                         <button className="btn-icon" title="Preview PDF" style={{ color: 'var(--text-secondary)' }} onClick={() => handleOpenPreview(inv)}>
                           <Eye size={18} />
                         </button>
-                        <button className="btn-icon btn-icon-amber" title="Send via Mail" onClick={() => handleSend(inv.id)}>
+                        <button className="btn-icon btn-icon-amber" title="Send via Mail" onClick={() => handleSend(inv)}>
                           <Send size={18} />
                         </button>
 
@@ -362,7 +385,7 @@ export default function Invoices() {
                               {(inv.status === 'sent' || inv.status === 'unpaid') && (
                                 <button
                                   className="dropdown-item amber"
-                                  onClick={() => { handleRemind(inv.id); setOpenMenuId(null); }}
+                                  onClick={() => { handleRemind(inv); setOpenMenuId(null); }}
                                 >
                                   <Bell size={15} /> Send Reminder
                                 </button>
