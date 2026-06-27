@@ -4,6 +4,7 @@ import { generatePDF } from '../services/pdfGenerator';
 import { generateExcel } from '../services/excelGenerator';
 import { generateExportExcel } from '../services/exportGenerator';
 import { composeEmail, saveTempPDF, type EmailClient } from '../services/mailComposer';
+import { sendInvoiceEmail, sendReminderEmail } from '../services/emailService';
 import { getFirmProfile } from '../routes/settings';
 import archiver from 'archiver';
 import path from 'path';
@@ -497,9 +498,21 @@ router.post('/:id/send', async (req: Request, res: Response) => {
     const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(req.params.id) as any[];
     const pdfBuffer = await generatePDF(invoice, lineItems);
     const profile = getFirmProfile();
-    const emailClient = (profile.email_client || 'apple_mail') as EmailClient;
+    const emailClient = profile.email_client || 'apple_mail';
 
-    // Save PDF to temp for the mail client to pick up (also used for browser clients to surface the filename)
+    if (emailClient === 'smtp') {
+      const result = await sendInvoiceEmail(invoice, pdfBuffer);
+      db.prepare("UPDATE invoices SET status = 'sent', updated_at = datetime('now') WHERE id = ? AND status = 'draft'").run(req.params.id);
+      return res.json({ 
+        success: true, 
+        autoAttached: true,
+        method: 'smtp',
+        messageId: result.messageId,
+        previewUrl: result.previewUrl
+      });
+    }
+
+    // Save PDF to temp for the mail client to pick up
     const pdfFilename = `${buildFeeMemoName(invoice.invoice_number, invoice.client_name || 'Client', invoice.date || '')}.pdf`;
     const tempPath = saveTempPDF(pdfBuffer, pdfFilename);
 
@@ -517,15 +530,7 @@ router.post('/:id/send', async (req: Request, res: Response) => {
 
     // Update status to sent
     db.prepare("UPDATE invoices SET status = 'sent', updated_at = datetime('now') WHERE id = ? AND status = 'draft'").run(req.params.id);
-
-    return res.json({
-      success: true,
-      method: result.method,
-      autoAttached: result.autoAttached,
-      composeUrl: result.composeUrl ?? null,
-      pdfDownloaded: result.pdfDownloaded ?? false,
-      pdfFilename,
-    });
+    res.json({ message: 'Email composed in mail client', method: result.method, autoAttached: result.autoAttached });
   } catch (err: any) {
     console.error('Error composing invoice email:', err);
     res.status(500).json({ error: 'Failed to open mail client' });
@@ -543,7 +548,18 @@ router.post('/:id/remind', async (req: Request, res: Response) => {
     if (!invoice.client_email) return res.status(400).json({ error: 'Client has no email address' });
 
     const profile = getFirmProfile();
-    const emailClient = (profile.email_client || 'apple_mail') as EmailClient;
+    const firmName = profile.firm_name || 'Legal Billing';
+    const emailClient: EmailClient | 'smtp' = profile.email_client || 'apple_mail';
+
+    if (emailClient === 'smtp') {
+      const result = await sendReminderEmail(invoice);
+      return res.json({ 
+        message: 'Reminder sent via SMTP', 
+        method: 'smtp',
+        messageId: result.messageId,
+        previewUrl: result.previewUrl
+      });
+    }
 
     const subject = `Payment Reminder: Fee Memo ${invoice.invoice_number} - ₹${invoice.total.toFixed(2)}`;
     const body = `Dear ${invoice.client_name},\n\nI request you to kindly process payment of my pending fee memo.\n\nThe details of the pending fee memo are set out below:\n\nFee Memo Number: ${invoice.invoice_number}\nOriginal Date: ${invoice.date}\nAmount Due: ₹${invoice.total.toFixed(2)}\n\nPlease arrange payment at your earliest convenience. If you have already made the payment, please provide the payment details for updating my record.`;
@@ -555,13 +571,7 @@ router.post('/:id/remind', async (req: Request, res: Response) => {
       emailClient,
     });
 
-    return res.json({
-      success: true,
-      method: result.method,
-      autoAttached: result.autoAttached,
-      composeUrl: result.composeUrl ?? null,
-      pdfDownloaded: result.pdfDownloaded ?? false,
-    });
+    res.json({ message: 'Reminder composed in mail client', method: result.method });
   } catch (err: any) {
     console.error('Error composing reminder email:', err);
     res.status(500).json({ error: 'Failed to open mail client' });

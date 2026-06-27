@@ -302,52 +302,33 @@ export default function Settings() {
             <div className="settings-section" style={{ marginBottom: 0 }}>
               <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Mail size={20} /> Email Client</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: -8 }}>
-                Choose how invoices and reminders are sent. Native clients auto-attach the PDF;
-                browser clients open a pre-filled compose window and download the PDF for manual attachment.
+                Choose your preferred mail application. Invoices and reminders will open directly in the selected client.
               </p>
               <div style={{ display: 'grid', gap: 10 }}>
                 {[
                   {
+                    key: 'smtp' as const,
+                    label: 'SMTP (Nodemailer)',
+                    desc: 'Send emails directly via your own SMTP server',
+                    badge: 'Direct Send',
+                  },
+                  {
                     key: 'apple_mail' as const,
                     label: 'Apple Mail',
-                    desc: 'Opens Mail.app with the invoice PDF auto-attached (macOS only)',
+                    desc: 'Opens Mail.app with the invoice PDF auto-attached',
                     badge: 'Auto-Attach',
-                    badgeClass: 'badge paid',
                   },
                   {
                     key: 'outlook' as const,
                     label: 'Microsoft Outlook',
-                    desc: 'Opens Outlook with the invoice PDF auto-attached (macOS via AppleScript, Windows via PowerShell)',
+                    desc: 'Opens Outlook with the invoice PDF auto-attached',
                     badge: 'Auto-Attach',
-                    badgeClass: 'badge paid',
-                  },
-                  {
-                    key: 'gmail' as const,
-                    label: 'Gmail',
-                    desc: 'Opens a pre-filled Gmail compose window in your browser; PDF downloads automatically',
-                    badge: 'Browser Client',
-                    badgeClass: 'badge sent',
-                  },
-                  {
-                    key: 'outlook_web' as const,
-                    label: 'Outlook Web',
-                    desc: 'Opens a pre-filled Outlook.com compose window in your browser; PDF downloads automatically',
-                    badge: 'Browser Client',
-                    badgeClass: 'badge sent',
-                  },
-                  {
-                    key: 'yahoo_mail' as const,
-                    label: 'Yahoo Mail',
-                    desc: 'Opens a pre-filled Yahoo Mail compose window in your browser; PDF downloads automatically',
-                    badge: 'Browser Client',
-                    badgeClass: 'badge sent',
                   },
                   {
                     key: 'mailto' as const,
                     label: 'Default Mail Client',
-                    desc: 'Opens your system default mail app via mailto: link — attachment must be added manually',
+                    desc: 'Opens your system default via mailto: link (manual attachment)',
                     badge: 'Manual Attach',
-                    badgeClass: 'badge unpaid',
                   },
                 ].map(opt => {
                   const isSelected = profile.email_client === opt.key;
@@ -393,7 +374,7 @@ export default function Settings() {
                         </div>
                       </div>
                       <span
-                        className={opt.badgeClass}
+                        className={opt.key !== 'mailto' ? 'badge paid' : 'badge sent'}
                         style={{ fontSize: 10, flexShrink: 0 }}
                       >
                         {opt.badge}
@@ -402,6 +383,56 @@ export default function Settings() {
                   );
                 })}
               </div>
+
+              {profile.email_client === 'smtp' && (
+                <div style={{ marginTop: 24, padding: '16px', background: 'var(--bg-tertiary, rgba(0,0,0,0.03))', borderRadius: 'var(--radius-sm)' }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>SMTP Configuration</h4>
+                  <div className="form-row">
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label className="form-label">SMTP Host</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. smtp.gmail.com"
+                        value={profile.smtp_host}
+                        onChange={(e) => handleChange('smtp_host', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label className="form-label">SMTP Port</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        placeholder="587"
+                        value={profile.smtp_port}
+                        onChange={(e) => handleChange('smtp_port', parseInt(e.target.value) || 587)}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">SMTP User</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="user@example.com"
+                        value={profile.smtp_user}
+                        onChange={(e) => handleChange('smtp_user', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">SMTP Password</label>
+                      <input
+                        type="password"
+                        className="form-input"
+                        placeholder={profile.smtp_pass ? '********' : 'Enter password...'}
+                        value={profile.smtp_pass}
+                        onChange={(e) => handleChange('smtp_pass', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

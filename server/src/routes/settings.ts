@@ -19,7 +19,7 @@ export interface FirmProfile {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
-  email_client: 'apple_mail' | 'outlook' | 'mailto' | 'gmail' | 'outlook_web' | 'yahoo_mail';
+  email_client: 'smtp' | 'apple_mail' | 'outlook' | 'mailto';
   updated_at: string;
 }
 
@@ -44,7 +44,7 @@ router.get('/firm-profile', (_req: Request, res: Response) => {
         smtp_port: 587,
         smtp_user: '',
         smtp_pass: '',
-        email_client: 'apple_mail' as const,
+        email_client: 'apple_mail',
       });
     }
     // Mask password before sending to frontend
@@ -155,7 +155,7 @@ export function getFirmProfile(): FirmProfile {
     smtp_port: 587,
     smtp_user: '',
     smtp_pass: '',
-    email_client: 'apple_mail' as const,
+    email_client: 'apple_mail',
     updated_at: '',
   };
 }
