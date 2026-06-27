@@ -1,4 +1,4 @@
-import { execFile, exec } from 'child_process';
+import { execFile, exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
 import path from 'path';
@@ -84,90 +84,80 @@ end tell
 }
 
 /**
- * Compose an email in Microsoft Outlook on Windows using PowerShell COM automation.
- * Opens a draft compose window with the PDF auto-attached.
+ * Find OUTLOOK.EXE on Windows by checking common installation directories
+ * and the Windows registry App Paths key.
+ * Returns the full path, or null if Outlook is not found.
+ */
+async function findOutlookExe(): Promise<string | null> {
+  const pf64 = process.env['ProgramFiles']       ?? 'C:\\Program Files';
+  const pf86 = process.env['ProgramFiles(x86)']  ?? 'C:\\Program Files (x86)';
+
+  const candidates = [
+    // Microsoft 365 / Office 2019 / 2016
+    path.join(pf64, 'Microsoft Office', 'root', 'Office16', 'OUTLOOK.EXE'),
+    path.join(pf86, 'Microsoft Office', 'root', 'Office16', 'OUTLOOK.EXE'),
+    // Office 2013
+    path.join(pf64, 'Microsoft Office', 'Office15', 'OUTLOOK.EXE'),
+    path.join(pf86, 'Microsoft Office', 'Office15', 'OUTLOOK.EXE'),
+    // Office 2010
+    path.join(pf64, 'Microsoft Office', 'Office14', 'OUTLOOK.EXE'),
+    path.join(pf86, 'Microsoft Office', 'Office14', 'OUTLOOK.EXE'),
+  ];
+
+  for (const p of candidates) {
+    try { fs.accessSync(p, fs.constants.F_OK); return p; } catch (_) {}
+  }
+
+  // Fallback: query the Windows registry App Paths
+  try {
+    const { stdout } = await execAsync(
+      'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\OUTLOOK.EXE" /ve'
+    );
+    const match = stdout.match(/REG_SZ\s+(.+)/i);
+    if (match) {
+      const regPath = match[1].trim();
+      try { fs.accessSync(regPath, fs.constants.F_OK); return regPath; } catch (_) {}
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+/**
+ * Compose an email in Microsoft Outlook on Windows using its documented
+ * command-line switches:
  *
- * Key requirements for reliable Outlook COM from a Node.js child process:
+ *   /m  "address?subject=...&body=..."   — opens a new compose window
+ *   /a  "C:\path\to\file.pdf"            — attaches a file
  *
- *  1. -STA flag: Outlook's COM server requires Single-Threaded Apartment (STA)
- *     threading. PowerShell defaults to MTA when spawned as a subprocess, which
- *     causes CreateItem(0) to silently fail or Outlook to never appear.
+ * This is simpler and more reliable than PowerShell COM automation:
+ * no threading model concerns, no execution policy, no escaping pitfalls.
+ * The process is spawned detached so we don't wait for Outlook to close.
  *
- *  2. execFileAsync (not execAsync): passes the script path as a direct argument
- *     array — no shell involved, so no quoting/escaping of the file path.
- *
- *  3. JSON params file: all user data (to, subject, body, path) is written as JSON
- *     and read by PowerShell via ConvertFrom-Json — no inline escaping of ₹,
- *     quotes, newlines, or any other special characters.
- *
- *  4. Start-Sleep at end: gives Outlook's compose window time to become visible
- *     before PowerShell exits and the child process is collected.
- *
- * Throws if Outlook is not installed or PowerShell fails.
+ * Throws if Outlook is not installed on this system.
  */
 async function composeWithOutlookWindows(opts: ComposeEmailOptions): Promise<void> {
   const { to, subject, body, attachmentPath } = opts;
 
-  const tempDir = path.join(os.tmpdir(), 'lexledger-mail');
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
+  const outlookExe = await findOutlookExe();
+  if (!outlookExe) {
+    throw new Error('Outlook executable not found on this system');
   }
 
-  const stamp = Date.now();
+  // /m accepts "address?subject=...&body=..." — same encoding as mailto:
+  const mArg = `${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-  // ── 1. Write parameters to a JSON file ─────────────────────────────────────
-  // JSON safely encodes newlines, ₹, quotes, backslashes — zero manual escaping.
-  const paramsFile = path.join(tempDir, `compose_params_${stamp}.json`);
-  fs.writeFileSync(
-    paramsFile,
-    JSON.stringify({
-      to,
-      subject,
-      body,
-      attachmentPath: attachmentPath ?? '',
-    }),
-    'utf8'
-  );
-
-  // ── 2. Write the PowerShell script to a .ps1 file ──────────────────────────
-  // Escape single-quotes only in the params file path (unlikely but defensive).
-  const safeParamsPath = paramsFile.replace(/'/g, "''");
-  const scriptContent = [
-    `$params = Get-Content '${safeParamsPath}' -Raw | ConvertFrom-Json`,
-    `$outlook = New-Object -ComObject Outlook.Application`,
-    `$mail = $outlook.CreateItem(0)`,
-    `$mail.To      = $params.to`,
-    `$mail.Subject = $params.subject`,
-    `$mail.Body    = $params.body`,
-    `if ($params.attachmentPath -and $params.attachmentPath -ne '') {`,
-    `  $mail.Attachments.Add($params.attachmentPath)`,
-    `}`,
-    `$mail.Display()`,
-    `# Give Outlook time to open the compose window before PowerShell exits`,
-    `Start-Sleep -Milliseconds 800`,
-  ].join('\r\n');
-
-  const scriptFile = path.join(tempDir, `compose_${stamp}.ps1`);
-  fs.writeFileSync(scriptFile, scriptContent, 'utf8');
-
-  // ── 3. Execute with -STA and -File ─────────────────────────────────────────
-  // -STA:               Single-Threaded Apartment — required for Outlook COM.
-  // -NoProfile:         Skip user profile (faster startup).
-  // -ExecutionPolicy Bypass: Don't block unsigned scripts.
-  // -File scriptFile:   Path passed as raw arg — no shell, no quoting issues.
-  try {
-    await execFileAsync('powershell.exe', [
-      '-STA',
-      '-NoProfile',
-      '-ExecutionPolicy', 'Bypass',
-      '-File', scriptFile,
-    ]);
-  } finally {
-    // Clean up temp files regardless of success or failure
-    try { fs.unlinkSync(scriptFile); } catch (_) {}
-    try { fs.unlinkSync(paramsFile); } catch (_) {}
+  const args = ['/m', mArg];
+  if (attachmentPath) {
+    args.push('/a', attachmentPath);
   }
+
+  // Spawn detached so Outlook runs independently. unref() lets our process
+  // exit without waiting for Outlook to be closed by the user.
+  const child = spawn(outlookExe, args, { detached: true, stdio: 'ignore' });
+  child.unref();
 }
+
 
 /** Open a mailto: link using the system default handler. Cannot attach files. */
 async function composeWithMailto(opts: ComposeEmailOptions): Promise<void> {
@@ -283,12 +273,12 @@ export async function composeEmail(opts: ComposeEmailOptions): Promise<ComposeEm
         return { method: 'mailto', autoAttached: false };
       }
     } else if (platform === 'win32') {
-      // Windows: use PowerShell COM automation
+      // Windows: use OUTLOOK.EXE /m /a command-line switches
       try {
         await composeWithOutlookWindows(opts);
         return { method: 'outlook', autoAttached: !!opts.attachmentPath };
       } catch (err: any) {
-        console.error('Windows Outlook PowerShell COM failed, falling back to mailto:', err.message);
+        console.error('Windows Outlook launch failed, falling back to mailto:', err.message);
         // Fallback to mailto — caller will show Download PDF button in UI
         try {
           await composeWithMailto(opts);
