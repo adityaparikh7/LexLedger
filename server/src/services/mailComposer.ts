@@ -87,9 +87,21 @@ end tell
  * Compose an email in Microsoft Outlook on Windows using PowerShell COM automation.
  * Opens a draft compose window with the PDF auto-attached.
  *
- * Strategy: write the PowerShell script and all parameters to temp files, then
- * execute with `powershell -File`. This avoids every inline command-line escaping
- * issue (broken by ₹, quotes, newlines, non-ASCII characters, etc.).
+ * Key requirements for reliable Outlook COM from a Node.js child process:
+ *
+ *  1. -STA flag: Outlook's COM server requires Single-Threaded Apartment (STA)
+ *     threading. PowerShell defaults to MTA when spawned as a subprocess, which
+ *     causes CreateItem(0) to silently fail or Outlook to never appear.
+ *
+ *  2. execFileAsync (not execAsync): passes the script path as a direct argument
+ *     array — no shell involved, so no quoting/escaping of the file path.
+ *
+ *  3. JSON params file: all user data (to, subject, body, path) is written as JSON
+ *     and read by PowerShell via ConvertFrom-Json — no inline escaping of ₹,
+ *     quotes, newlines, or any other special characters.
+ *
+ *  4. Start-Sleep at end: gives Outlook's compose window time to become visible
+ *     before PowerShell exits and the child process is collected.
  *
  * Throws if Outlook is not installed or PowerShell fails.
  */
@@ -104,7 +116,7 @@ async function composeWithOutlookWindows(opts: ComposeEmailOptions): Promise<voi
   const stamp = Date.now();
 
   // ── 1. Write parameters to a JSON file ─────────────────────────────────────
-  // JSON handles all encoding: newlines, ₹, quotes, backslashes — no escaping needed.
+  // JSON safely encodes newlines, ₹, quotes, backslashes — zero manual escaping.
   const paramsFile = path.join(tempDir, `compose_params_${stamp}.json`);
   fs.writeFileSync(
     paramsFile,
@@ -118,33 +130,40 @@ async function composeWithOutlookWindows(opts: ComposeEmailOptions): Promise<voi
   );
 
   // ── 2. Write the PowerShell script to a .ps1 file ──────────────────────────
-  // Single-quote the paramsFile path and escape any single-quotes in it.
+  // Escape single-quotes only in the params file path (unlikely but defensive).
   const safeParamsPath = paramsFile.replace(/'/g, "''");
-  const scriptContent = `
-$params = Get-Content '${safeParamsPath}' -Raw | ConvertFrom-Json
-$outlook = New-Object -ComObject Outlook.Application
-$mail = $outlook.CreateItem(0)
-$mail.To      = $params.to
-$mail.Subject = $params.subject
-$mail.Body    = $params.body
-if ($params.attachmentPath -and $params.attachmentPath -ne '') {
-  $mail.Attachments.Add($params.attachmentPath)
-}
-$mail.Display()
-`.trim();
+  const scriptContent = [
+    `$params = Get-Content '${safeParamsPath}' -Raw | ConvertFrom-Json`,
+    `$outlook = New-Object -ComObject Outlook.Application`,
+    `$mail = $outlook.CreateItem(0)`,
+    `$mail.To      = $params.to`,
+    `$mail.Subject = $params.subject`,
+    `$mail.Body    = $params.body`,
+    `if ($params.attachmentPath -and $params.attachmentPath -ne '') {`,
+    `  $mail.Attachments.Add($params.attachmentPath)`,
+    `}`,
+    `$mail.Display()`,
+    `# Give Outlook time to open the compose window before PowerShell exits`,
+    `Start-Sleep -Milliseconds 800`,
+  ].join('\r\n');
 
   const scriptFile = path.join(tempDir, `compose_${stamp}.ps1`);
   fs.writeFileSync(scriptFile, scriptContent, 'utf8');
 
-  // ── 3. Execute with -File (not -Command) ────────────────────────────────────
-  // -ExecutionPolicy Bypass: prevent Windows from blocking unsigned scripts.
-  // -NonInteractive is intentionally omitted: $mail.Display() needs a visible window.
+  // ── 3. Execute with -STA and -File ─────────────────────────────────────────
+  // -STA:               Single-Threaded Apartment — required for Outlook COM.
+  // -NoProfile:         Skip user profile (faster startup).
+  // -ExecutionPolicy Bypass: Don't block unsigned scripts.
+  // -File scriptFile:   Path passed as raw arg — no shell, no quoting issues.
   try {
-    await execAsync(
-      `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptFile}"`
-    );
+    await execFileAsync('powershell.exe', [
+      '-STA',
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-File', scriptFile,
+    ]);
   } finally {
-    // Clean up temp files regardless of success/failure
+    // Clean up temp files regardless of success or failure
     try { fs.unlinkSync(scriptFile); } catch (_) {}
     try { fs.unlinkSync(paramsFile); } catch (_) {}
   }
