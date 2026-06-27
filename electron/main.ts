@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 import path from 'path';
 import { fork, ChildProcess } from 'child_process';
 import fs from 'fs';
+import http from 'http';
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
@@ -119,6 +120,42 @@ function startServer(): Promise<void> {
   });
 }
 
+/**
+ * Poll http://127.0.0.1:{port}/api/dashboard until it responds with HTTP 200,
+ * or until maxAttempts is reached. This guarantees the server is truly ready
+ * to accept connections before the window loads (fixes race on Windows).
+ */
+function waitForServer(port: number, maxAttempts = 30, intervalMs = 300): Promise<void> {
+  return new Promise((resolve) => {
+    let attempts = 0;
+    const tryConnect = () => {
+      attempts++;
+      const req = http.get(`http://127.0.0.1:${port}/api/dashboard`, (res) => {
+        res.resume(); // drain the response
+        if (res.statusCode && res.statusCode < 500) {
+          console.log(`Server health-check passed (attempt ${attempts})`);
+          resolve();
+        } else if (attempts < maxAttempts) {
+          setTimeout(tryConnect, intervalMs);
+        } else {
+          console.warn('Server health-check timed out — continuing anyway');
+          resolve();
+        }
+      });
+      req.on('error', () => {
+        if (attempts < maxAttempts) {
+          setTimeout(tryConnect, intervalMs);
+        } else {
+          console.warn('Server health-check timed out — continuing anyway');
+          resolve();
+        }
+      });
+      req.setTimeout(500, () => req.destroy());
+    };
+    tryConnect();
+  });
+}
+
 function createWindow() {
   // Platform-specific window options
   const windowOptions: Electron.BrowserWindowConstructorOptions = {
@@ -180,6 +217,11 @@ function createWindow() {
 app.whenReady().then(async () => {
   try {
     await startServer();
+    // After the IPC 'server-ready' fires, do an active HTTP health-check to
+    // confirm the port is truly accepting connections (prevents race on Windows).
+    if (!isDev) {
+      await waitForServer(SERVER_PORT);
+    }
   } catch (err: any) {
     console.error('Failed to start server:', err);
     dialog.showErrorBox(
