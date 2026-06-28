@@ -177,8 +177,15 @@ export default function Invoices() {
       const result = await sendInvoice(id);
       if (result.autoAttached) {
         addToast('Invoice opened in mail client with PDF attached!', 'success');
+      } else if (result.triggerPdfDownload) {
+        // For browser-based mail clients, auto-download the PDF
+        const inv = invoices.find(i => i.id === id);
+        if (inv) {
+          downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date);
+        }
+        addToast('Mail compose opened in browser — the PDF is downloading. Please attach it to the email.', 'info');
       } else {
-        addToast('Mail client opened — please attach the downloaded PDF manually', 'info');
+        addToast('Mail client opened — please attach the invoice PDF manually', 'info');
       }
       fetchInvoices();
     } catch (err: unknown) {

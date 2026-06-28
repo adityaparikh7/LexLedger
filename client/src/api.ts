@@ -90,7 +90,7 @@ export interface FirmProfile {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
-  email_client: 'smtp' | 'apple_mail' | 'outlook' | 'mailto';
+  email_client: 'apple_mail' | 'outlook' | 'gmail_web' | 'outlook_web' | 'mailto';
 }
 async function request(url: string, options?: RequestInit) {
   const maxRetries = 5;
@@ -232,7 +232,7 @@ export const downloadBulkPDFs = async (clientId: number, status: string, clientN
   URL.revokeObjectURL(url);
 };
 // Email
-export const sendInvoice = (id: number): Promise<{ message: string; method: string; autoAttached: boolean }> =>
+export const sendInvoice = (id: number): Promise<{ message: string; method: string; autoAttached: boolean; triggerPdfDownload?: boolean }> =>
   request(`/invoices/${id}/send`, { method: 'POST' });
 export const sendReminder = (id: number): Promise<{ message: string; method: string }> =>
   request(`/invoices/${id}/remind`, { method: 'POST' });

@@ -19,7 +19,7 @@ export interface FirmProfile {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
-  email_client: 'smtp' | 'apple_mail' | 'outlook' | 'mailto';
+  email_client: 'apple_mail' | 'outlook' | 'gmail_web' | 'outlook_web' | 'mailto';
   updated_at: string;
 }
 
@@ -44,8 +44,12 @@ router.get('/firm-profile', (_req: Request, res: Response) => {
         smtp_port: 587,
         smtp_user: '',
         smtp_pass: '',
-        email_client: 'apple_mail',
+        email_client: 'mailto',
       });
+    }
+    // Graceful migration: if stored value is 'smtp', return 'mailto' instead
+    if (profile.email_client === ('smtp' as any)) {
+      profile.email_client = 'mailto';
     }
     // Mask password before sending to frontend
     if (profile.smtp_pass) {
@@ -122,7 +126,7 @@ router.put('/firm-profile', (req: Request, res: Response) => {
       smtp_port ?? 587,
       smtp_user ?? '',
       finalSmtpPass ?? '',
-      email_client ?? 'apple_mail'
+      email_client ?? 'mailto'
     );
 
     const updated = db.prepare('SELECT * FROM firm_profile WHERE id = 1').get() as FirmProfile;
@@ -139,25 +143,32 @@ router.put('/firm-profile', (req: Request, res: Response) => {
 /** Helper: retrieve the firm profile for use in generators */
 export function getFirmProfile(): FirmProfile {
   const profile = db.prepare('SELECT * FROM firm_profile WHERE id = 1').get() as FirmProfile | undefined;
-  return profile ?? {
-    firm_name: '',
-    firm_address: '',
-    firm_phone: '',
-    firm_email: '',
-    bank_account_name: '',
-    bank_name: '',
-    bank_account_number: '',
-    bank_ifsc: '',
-    pan_number: '',
-    signature_name: '',
-    signature_full: '',
-    smtp_host: '',
-    smtp_port: 587,
-    smtp_user: '',
-    smtp_pass: '',
-    email_client: 'apple_mail',
-    updated_at: '',
-  };
+  if (!profile) {
+    return {
+      firm_name: '',
+      firm_address: '',
+      firm_phone: '',
+      firm_email: '',
+      bank_account_name: '',
+      bank_name: '',
+      bank_account_number: '',
+      bank_ifsc: '',
+      pan_number: '',
+      signature_name: '',
+      signature_full: '',
+      smtp_host: '',
+      smtp_port: 587,
+      smtp_user: '',
+      smtp_pass: '',
+      email_client: 'mailto',
+      updated_at: '',
+    };
+  }
+  // Graceful migration: if stored value is 'smtp', treat as 'mailto'
+  if (profile.email_client === ('smtp' as any)) {
+    profile.email_client = 'mailto';
+  }
+  return profile;
 }
 
 export default router;
