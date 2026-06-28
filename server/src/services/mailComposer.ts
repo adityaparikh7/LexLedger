@@ -83,22 +83,34 @@ end tell
 async function composeWithOutlookWindows(opts: ComposeEmailOptions): Promise<void> {
   const { to, subject, body, attachmentPath } = opts;
 
-  const lines = [
+  // Build PowerShell script using a here-string (@'...'@) for the body
+  // to safely handle newlines, special characters, and Unicode
+  const scriptLines: string[] = [
     `$outlook = New-Object -ComObject Outlook.Application`,
     `$mail = $outlook.CreateItem(0)`,
     `$mail.To = '${escapePowerShell(to)}'`,
     `$mail.Subject = '${escapePowerShell(subject)}'`,
-    `$mail.Body = '${escapePowerShell(body)}'`,
+    `$mail.Body = @'`,
+    body,
+    `'@`,
   ];
   if (attachmentPath) {
     // Convert forward slashes to backslashes for Windows paths
     const winPath = attachmentPath.replace(/\//g, '\\');
-    lines.push(`$mail.Attachments.Add('${escapePowerShell(winPath)}')`);
+    scriptLines.push(`$mail.Attachments.Add('${escapePowerShell(winPath)}')`);
   }
-  lines.push(`$mail.Display()`);
+  scriptLines.push(`$mail.Display()`);
 
-  const psCommand = lines.join('; ');
-  await execAsync(`powershell -NoProfile -Command "${psCommand.replace(/"/g, '\\"')}"`);
+  // Write to a temp script file to avoid command-line escaping issues
+  const tempDir = path.join(os.tmpdir(), 'lexledger-mail');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  const scriptPath = path.join(tempDir, 'compose-outlook.ps1');
+  // UTF-8 BOM ensures PowerShell 5.x reads Unicode (e.g. ₹) correctly
+  const bom = '\uFEFF';
+  fs.writeFileSync(scriptPath, bom + scriptLines.join('\r\n'), 'utf8');
+  await execAsync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`);
 }
 
 /** Open a URL in the system default browser, cross-platform. */
