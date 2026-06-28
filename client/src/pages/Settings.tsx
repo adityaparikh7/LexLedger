@@ -317,7 +317,7 @@ export default function Settings() {
                   {
                     key: 'outlook' as const,
                     label: 'Microsoft Outlook (Desktop)',
-                    desc: 'Opens Outlook with the invoice PDF auto-attached (macOS & Windows)',
+                    desc: 'Opens Outlook app with the invoice PDF auto-attached (macOS only - Windows support coming soon)',
                     badge: 'Auto-Attach',
                     badgeClass: 'badge paid',
                     icon: <Monitor size={18} />,
@@ -481,7 +481,7 @@ export default function Settings() {
                 }}>
                   <div>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>Redundant Copies</div>
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Every PDF & Excel export is saved in the copies/ directory</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Every PDF & Excel export is saved in the copies/ directory after manual download</div>
                   </div>
                   <span className="badge paid">ENABLED</span>
                 </div>
@@ -510,15 +510,17 @@ export default function Settings() {
               <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Info size={20} /> About</h3>
               <div style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.8 }}>
                 <p><strong>LexLedger</strong> v1.3.0</p>
-                <p>A professional invoicing and billing tool designed for legal practices.</p>
+                <p>A lightweight and easy-to-use invoicing and billing tool designed for legal practices.</p>
                 <div style={{ marginTop: 12 }}>
                   <strong>Key Features:</strong>
                   <ul style={{ paddingLeft: 20, margin: 0 }}>
                     <li><strong>Standalone Desktop App:</strong> Native experience for macOS & Windows.</li>
                     <li><strong>Flexible Invoicing:</strong> Generate professional PDF invoices with auto-numbering.</li>
                     <li><strong>Payment Management:</strong> Advanced tracking for partial payments & TDS.</li>
+                    <li><strong>Client Management:</strong> Maintain a database of clients with contact details.</li>
+                    <li><strong>Email Integration:</strong> Seamless integration with native email clients.</li>
                     <li><strong>Bulk Export:</strong> Export invoice records to Excel for custom date ranges.</li>
-                    <li><strong>Customization:</strong> Fully editable firm profiles and native mail client integration.</li>
+                    <li><strong>Customization:</strong> Fully editable firm profiles.</li>
                     <li><strong>Reliability:</strong> Offline access with automated redundant backups.</li>
                   </ul>
                 </div>

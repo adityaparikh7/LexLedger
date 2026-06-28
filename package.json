@@ -16,7 +16,7 @@
         "electron:build-server": "cd server && npm run build",
         "electron:build-client": "cd client && npm run build",
         "electron:prepare-puppeteer": "node scripts/prepare-puppeteer.js",
-        "electron:rebuild-native": "npx --yes @electron/rebuild -m server",
+        "electron:rebuild-native": "npx --yes @electron/rebuild -f -m server",
         "electron:build": "npm run electron:compile && npm run electron:build-server && npm run electron:build-client && npm run electron:prepare-puppeteer && npm run electron:rebuild-native && electron-builder --mac",
         "electron:build-quick": "npm run electron:compile && npm run electron:build-server && npm run electron:build-client && electron-builder --mac",
         "electron:build-win": "npm run electron:compile && npm run electron:build-server && npm run electron:build-client && npm run electron:prepare-puppeteer && npm run electron:rebuild-native && electron-builder --win",

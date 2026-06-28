@@ -6,6 +6,7 @@ import InvoiceForm from './pages/InvoiceForm';
 import Clients from './pages/Clients';
 import Settings from './pages/Settings';
 import Export from './pages/Export';
+import Support from './pages/Support';
 
 import { ToastContext, type Toast } from './context/ToastContext';
 import { Menu, Scale, X, BarChart3, FileText, PlusCircle, Users, Settings as SettingsIcon, CheckCircle, XCircle, Info, Download } from 'lucide-react';
@@ -100,6 +101,10 @@ function App() {
                 <span className="nav-icon"><SettingsIcon size={18} /></span>
                 <span>Settings</span>
               </NavLink>
+              <NavLink to="/support" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={() => setIsSidebarOpen(false)}>
+                <span className="nav-icon"><Info size={18} /></span>
+                <span>Support</span>
+              </NavLink>
             </nav>
           </aside>
 
@@ -113,6 +118,7 @@ function App() {
               <Route path="/clients" element={<Clients />} />
               <Route path="/export" element={<Export />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/support" element={<Support />} />
             </Routes>
           </main>
         </div>
