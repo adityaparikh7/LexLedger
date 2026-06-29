@@ -14,13 +14,39 @@ const { execSync } = require('child_process');
 const PROJECT_ROOT = path.join(__dirname, '..');
 const TARGET_DIR = path.join(PROJECT_ROOT, 'puppeteer-cache');
 
-// Get the Puppeteer cache directory
-// Modern Puppeteer (v19+) uses ~/.cache/puppeteer by default
+// Get the Puppeteer cache directory.
+// Puppeteer versions differ on Windows: some use %LOCALAPPDATA%\puppeteer\Cache,
+// others fall back to ~/.cache/puppeteer (same as macOS/Linux).
+// We check all known locations and use whichever exists.
 const homeDir = require('os').homedir();
-const defaultCacheDir = path.join(homeDir, '.cache', 'puppeteer');
 
-// Also check if PUPPETEER_CACHE_DIR is set
-const cacheDir = process.env.PUPPETEER_CACHE_DIR || defaultCacheDir;
+function findCacheDir() {
+  if (process.env.PUPPETEER_CACHE_DIR) {
+    return process.env.PUPPETEER_CACHE_DIR;
+  }
+  const candidates = [];
+  if (process.platform === 'win32') {
+    // Newer Puppeteer versions on Windows
+    candidates.push(path.join(
+      process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local'),
+      'puppeteer',
+      'Cache'
+    ));
+  }
+  // All platforms: the classic ~/.cache/puppeteer location
+  candidates.push(path.join(homeDir, '.cache', 'puppeteer'));
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      console.log(`Found Puppeteer cache at: ${candidate}`);
+      return candidate;
+    }
+  }
+  // Return first candidate as the expected location for error messages
+  return candidates[0];
+}
+
+const cacheDir = findCacheDir();
 
 console.log(`Looking for Puppeteer cache at: ${cacheDir}`);
 

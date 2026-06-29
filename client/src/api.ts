@@ -1,6 +1,6 @@
 // When running in Electron (file:// protocol), API calls need absolute URL
 const isElectron = typeof window !== 'undefined' && window.location.protocol === 'file:';
-const API_BASE = isElectron ? 'http://localhost:3000/api' : '/api';
+const API_BASE = isElectron ? 'http://127.0.0.1:3000/api' : '/api';
 export interface Client {
   id: number;
   name: string;
@@ -90,26 +90,46 @@ export interface FirmProfile {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
-  email_client: 'smtp' | 'apple_mail' | 'outlook' | 'mailto';
+  email_client: 'apple_mail' | 'outlook' | 'gmail_web' | 'outlook_web' | 'mailto';
 }
 async function request(url: string, options?: RequestInit) {
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(err.error || 'Request failed');
+  const maxRetries = 5;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE}${url}`, {
+        ...options,
+        cache: 'no-store', // Prevent browser caching of API responses
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(err.error || 'Request failed');
+      }
+      // Handle blob responses for file downloads and previews
+      if (res.headers.get('content-type')?.includes('application/pdf') ||
+          res.headers.get('content-type')?.includes('spreadsheetml')) {
+        return res.blob();
+      }
+      return res.json();
+    } catch (err: unknown) {
+      lastError = err;
+      // Only retry on network errors (TypeError = fetch failed / connection refused).
+      // Do NOT retry on HTTP errors (e.g. 404, 500) — those are real errors.
+      const isNetworkError = err instanceof TypeError;
+      if (isNetworkError && attempt < maxRetries) {
+        const delay = 300 * Math.pow(2, attempt); // 300ms, 600ms, 1200ms, 2400ms, 4800ms
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
   }
-  // Handle blob responses for file downloads and previews
-  if (res.headers.get('content-type')?.includes('application/pdf') ||
-      res.headers.get('content-type')?.includes('spreadsheetml')) {
-    return res.blob();
-  }
-  return res.json();
+  throw lastError;
 }
 // Dashboard
 export const getDashboard = (timeFilter: string = 'all', startDate?: string, endDate?: string): Promise<DashboardData> => {
@@ -212,7 +232,7 @@ export const downloadBulkPDFs = async (clientId: number, status: string, clientN
   URL.revokeObjectURL(url);
 };
 // Email
-export const sendInvoice = (id: number): Promise<{ message: string; method: string; autoAttached: boolean }> =>
+export const sendInvoice = (id: number): Promise<{ message: string; method: string; autoAttached: boolean; triggerPdfDownload?: boolean }> =>
   request(`/invoices/${id}/send`, { method: 'POST' });
 export const sendReminder = (id: number): Promise<{ message: string; method: string }> =>
   request(`/invoices/${id}/remind`, { method: 'POST' });

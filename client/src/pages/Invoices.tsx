@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   getInvoices, getInvoice, deleteInvoice, updateInvoiceStatus,
@@ -7,7 +7,7 @@ import {
   type Invoice, type Payment
 } from '../api';
 import { useToast } from '../context/ToastContext';
-import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, X, Loader2, Check, FileDown, Eye } from 'lucide-react';
+import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, X, Loader2, Check, FileDown, Eye, CircleEllipsis } from 'lucide-react';
 
 interface FormPayment {
   date: string;
@@ -23,6 +23,22 @@ export default function Invoices() {
   const [searchTerm, setSearchTerm] = useState(location.state?.clientName || '');
   const navigate = useNavigate();
   const { addToast } = useToast();
+
+  // Overflow dropdown state
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (openMenuId === null) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [openMenuId]);
 
   // Payment modal state
   const [paymentModal, setPaymentModal] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
@@ -161,8 +177,15 @@ export default function Invoices() {
       const result = await sendInvoice(id);
       if (result.autoAttached) {
         addToast('Invoice opened in mail client with PDF attached!', 'success');
+      } else if (result.triggerPdfDownload) {
+        // For browser-based mail clients, auto-download the PDF
+        const inv = invoices.find(i => i.id === id);
+        if (inv) {
+          downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date);
+        }
+        addToast('Mail compose opened in browser — the PDF is downloading. Please attach it to the email.', 'info');
       } else {
-        addToast('Mail client opened — please attach the downloaded PDF manually', 'info');
+        addToast('Mail client opened — please attach the invoice PDF manually', 'info');
       }
       fetchInvoices();
     } catch (err: unknown) {
@@ -306,31 +329,61 @@ export default function Invoices() {
                         <option value="cancelled">Cancelled</option>
                       </select>
                     </td>
-                    <td className="sticky-right">
+                    <td className={`sticky-right${openMenuId === inv.id ? ' menu-open' : ''}`}>
                       <div className="btn-group">
-                        <button className="btn-icon btn-icon-blue" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
+                        {/* Primary actions — always visible */}
+                        <button className="btn-icon btn-icon-blue" title="Edit Invoice" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
                           <Edit2 size={18} />
                         </button>
                         <button className="btn-icon" title="Preview PDF" style={{ color: 'var(--text-secondary)' }} onClick={() => handleOpenPreview(inv)}>
                           <Eye size={18} />
                         </button>
-                        <button className="btn-icon btn-icon-green" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date)}>
-                          <FileDown size={18} />
-                        </button>
-                        <button className="btn-icon btn-icon-green" title="Download Excel" onClick={() => downloadExcel(inv.id, inv.invoice_number)}>
-                          <FileSpreadsheet size={18} />
-                        </button>
-                        <button className="btn-icon btn-icon-amber" title="Send via Email" onClick={() => handleSend(inv.id)}>
+                        <button className="btn-icon btn-icon-amber" title="Send via Mail" onClick={() => handleSend(inv.id)}>
                           <Send size={18} />
                         </button>
-                        {(inv.status === 'sent' || inv.status === 'unpaid') && (
-                        <button className="btn-icon btn-icon-amber" title="Send Reminder" onClick={() => handleRemind(inv.id)}>
-                          <Bell size={18} />
-                        </button>
-                      )}
-                        <button className="btn-icon btn-icon-red" title="Delete" onClick={() => handleDelete(inv.id)}>
-                          <Trash2 size={18} style={{ color: 'var(--accent-red)' }} />
-                        </button>
+
+                        {/* Overflow menu */}
+                        <div className="action-menu" ref={openMenuId === inv.id ? dropdownRef : undefined}>
+                          <button
+                            className="btn-icon"
+                            title="More actions"
+                            style={{ color: 'var(--text-secondary)' }}
+                            onClick={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
+                          >
+                            <CircleEllipsis size={18} />
+                          </button>
+                          {openMenuId === inv.id && (
+                            <div className="dropdown-menu">
+                              <button
+                                className="dropdown-item"
+                                onClick={() => { downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date); setOpenMenuId(null); }}
+                              >
+                                <FileDown size={15} /> Download PDF
+                              </button>
+                              <button
+                                className="dropdown-item"
+                                onClick={() => { downloadExcel(inv.id, inv.invoice_number); setOpenMenuId(null); }}
+                              >
+                                <FileSpreadsheet size={15} /> Download Excel
+                              </button>
+                              {(inv.status === 'sent' || inv.status === 'unpaid') && (
+                                <button
+                                  className="dropdown-item amber"
+                                  onClick={() => { handleRemind(inv.id); setOpenMenuId(null); }}
+                                >
+                                  <Bell size={15} /> Send Reminder
+                                </button>
+                              )}
+                              <div className="dropdown-divider" />
+                              <button
+                                className="dropdown-item danger"
+                                onClick={() => { handleDelete(inv.id); setOpenMenuId(null); }}
+                              >
+                                <Trash2 size={15} /> Delete Invoice
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
