@@ -1,6 +1,6 @@
 # LexLedger: Legal Invoicing & Billing Management
 
-**Version:** 1.2.9
+**Version:** 1.3.0
 
 LexLedger is a full-stack legal invoicing and billing management application designed to streamline client tracking and automated document generation for legal practices. It is structured as a monorepo containing a React frontend, an Express backend, and an Electron wrapper for desktop deployment.
 
@@ -23,7 +23,7 @@ LexLedger is a full-stack legal invoicing and billing management application des
 | **Backend** | Express, TypeScript |
 | **Database** | SQLite (`better-sqlite3`) |
 | **Reporting**| PDFKit, ExcelJS, Puppeteer |
-| **Email** | Nodemailer, Native Mail Client (Apple Mail / Outlook / mailto) |
+| **Email** | Nodemailer, Native Mail Client (Apple Mail / Outlook / Gmail Web / Outlook Web / mailto) |
 
 ## Key Directory Structure
 
@@ -39,7 +39,8 @@ LexLedger is a full-stack legal invoicing and billing management application des
 │           ├── Invoices.tsx
 │           ├── InvoiceForm.tsx
 │           ├── Export.tsx
-│           └── Settings.tsx
+│           ├── Settings.tsx
+│           └── Support.tsx
 ├── server/                   # Express backend source code
 │   └── src/
 │       ├── db.ts             # SQLite schema, migrations, and invoice number generation
@@ -132,9 +133,9 @@ Downloaded PDFs are named: `Fee Memo No- {invoice_number} {client_name} {DD-MM-Y
 LexLedger supports two email delivery modes, configurable per-firm in the Settings page:
 
 1. **SMTP (Nodemailer):** Sends invoices directly using stored SMTP credentials (`smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`).
-2. **Native Mail Client:** Uses `mailComposer.ts` to generate a `mailto:` URI or trigger Apple Mail / Outlook via shell commands, with the PDF auto-attached where supported.
+2. **Native Mail Client:** Uses `mailComposer.ts` to trigger Apple Mail (macOS) / Outlook (macOS & Windows via PowerShell) with auto-attached PDFs, or generate web mail URLs (Gmail Web / Outlook Web), or a `mailto:` fallback.
 
-The preferred method is stored in `firm_profile.email_client` (`'apple_mail'` | `'outlook'` | `'mailto'`).
+The preferred method is stored in `firm_profile.email_client` (`'apple_mail'` | `'outlook'` | `'gmail_web'` | `'outlook_web'` | `'mailto'`).
 
 ## Firm Profile
 
@@ -183,10 +184,22 @@ Compile and package the standalone desktop application:
 npm run electron:build
 ```
 
+### Electron Build (Windows)
+Compile and package the standalone desktop application:
+```bash
+npm run electron:build-win
+```
+
 For a faster build that skips Puppeteer preparation and native module rebuilding:
 ```bash
-npm run electron:build-quick
+npm run electron:build-quick       # macOS
+npm run electron:build-quick-win   # Windows
 ```
+
+### Context Switching (Local vs Electron)
+When switching between Electron builds and the local development server, `better-sqlite3` will throw an ABI mismatch error because Electron uses a different Node version environment than your local system.
+- To restore the local Node environment for web development: Run `cd server && npm rebuild`
+- To rebuild for Electron: The build scripts (`electron:build` and `electron:build-win`) do this automatically using `npm run electron:rebuild-native`. If you need to do it manually, use `npm run electron:rebuild-native`.
 
 ## Development Conventions
 
@@ -195,8 +208,9 @@ npm run electron:build-quick
 3. **Service-Oriented Backend:** Encapsulate complex operations like PDF/Excel generation and email in dedicated service files within `server/src/services/`.
 4. **Database Migrations:** Schema changes should be implemented in `server/src/db.ts` using the `initDatabase` migration logic. Always guard migrations with existence checks and disable foreign keys (`PRAGMA foreign_keys = OFF`) when performing table rebuilds to prevent unintended cascade deletions.
 5. **Styling:** Follow the established premium dark theme using vanilla CSS or utility classes as found in `client/src/index.css` and component-specific styles.
-6. **Electron Native Modules:** If you encounter ABI mismatch errors with `better-sqlite3`, use `npm rebuild` for local dev or `npx electron-builder install-app-deps` for Electron builds.
+6. **Electron Native Modules:** If you encounter ABI mismatch errors with `better-sqlite3`, follow the Context Switching rule: use `cd server && npm rebuild` for local Node dev, or `npm run electron:rebuild-native` for Electron builds.
 7. **Invoice Numbering:** Always use `generateInvoiceNumber(dateStr?)` from `db.ts` to produce correctly scoped financial-year invoice numbers.
+8. **Puppeteer in Electron:** When building the Electron app, Puppeteer's Chrome binary must be bundled as an extra resource. The `npm run electron:prepare-puppeteer` script copies the system's Puppeteer cache into a local `puppeteer-cache` folder for `electron-builder` to bundle.
 
 ## Environment Variables
 

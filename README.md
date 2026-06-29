@@ -9,7 +9,7 @@ LexLedger is a full-stack legal invoicing and billing management application des
 - **Invoice Generation**: Create, view, and manage invoices natively, with redesigned and meticulously styled PDF and Excel invoice formats.
 - **Payment Tracking**: Track multiple partial payments per invoice, featuring auto-calculated and editable TDS amounts, alongside real-time balance tracking.
 - **Export Options**: Export individual beautifully formatted PDFs and Excel spreadsheets, or conditionally perform bulk exports of invoices for custom time periods.
-- **Email Service**: Send invoices and memos securely via email.
+- **Email Service**: Send invoices and memos securely via native mail clients (Apple Mail, Outlook for macOS/Windows), or Web mail (Gmail, Outlook Web).
 
 ## Tech Stack
 **Desktop**:
@@ -26,7 +26,7 @@ LexLedger is a full-stack legal invoicing and billing management application des
 - Server: Node.js & Express
 - Database: SQLite (via `better-sqlite3`)
 - Document Generation: `pdfkit`, `exceljs`, and `puppeteer`
-- Email: `nodemailer`
+- Email: `nodemailer`, Native Mail Clients (Apple Mail, Outlook), Web Mail (Gmail, Outlook)
 - Language: TypeScript
 
 ## Requirements
@@ -90,7 +90,10 @@ xattr -cr /Applications/LexLedger.app
 
 ## Future Work
 
-*Add any future enhancements, bug fixes, or upcoming features below.*
+<!-- *Add any future enhancements, bug fixes, or upcoming features below.* -->
 
-- Mail and reminders support
-- Windows support
+### 1. Multi-User Support
+- Implement user authentication and authorization to allow multiple users to manage clients and invoices securely.
+
+### 2. Cloud Sync
+- Enable cloud synchronization of client and invoice data across multiple devices.
