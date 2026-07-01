@@ -17,9 +17,11 @@
         "electron:build-client": "cd client && npm run build",
         "electron:prepare-puppeteer": "node scripts/prepare-puppeteer.js",
         "electron:rebuild-native": "npx --yes @electron/rebuild -f -m server",
+        "electron:rebuild-native-win-x64": "npx --yes @electron/rebuild -f -m server --arch=x64",
         "electron:build": "npm run electron:compile && npm run electron:build-server && npm run electron:build-client && npm run electron:prepare-puppeteer && npm run electron:rebuild-native && electron-builder --mac",
         "electron:build-quick": "npm run electron:compile && npm run electron:build-server && npm run electron:build-client && electron-builder --mac",
         "electron:build-win": "npm run electron:compile && npm run electron:build-server && npm run electron:build-client && npm run electron:prepare-puppeteer && npm run electron:rebuild-native && electron-builder --win",
+        "electron:build-win-x64": "npm run electron:compile && npm run electron:build-server && npm run electron:build-client && npm run electron:prepare-puppeteer && npm run electron:rebuild-native-win-x64 && electron-builder --win --x64",
         "electron:build-quick-win": "npm run electron:compile && npm run electron:build-server && npm run electron:build-client && electron-builder --win"
     },
     "devDependencies": {
