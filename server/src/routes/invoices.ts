@@ -8,6 +8,7 @@ import { getFirmProfile } from '../routes/settings';
 import archiver from 'archiver';
 import path from 'path';
 import fs from 'fs';
+import puppeteer from 'puppeteer';
 const router = Router();
 const COPIES_DIR = process.env.COPIES_PATH || path.join(__dirname, '..', '..', '..', 'copies');
 if (!fs.existsSync(COPIES_DIR)) {
@@ -175,16 +176,30 @@ router.get('/export-pdfs', async (req: Request, res: Response) => {
     });
     archive.pipe(res);
 
-    // Generate PDF for each invoice and append to archive
-    for (const invoice of invoices) {
-      const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(invoice.id) as any[];
-      const pdfBuffer = await generatePDF(invoice, lineItems);
-      const entryName = buildFeeMemoName(
-        invoice.invoice_number,
-        invoice.client_name || 'Client',
-        invoice.date || ''
-      );
-      archive.append(pdfBuffer, { name: `${entryName}.pdf` });
+    // Launch a single browser for the entire batch to improve performance
+    const launchOptions: Parameters<typeof puppeteer.launch>[0] = {
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    const browser = await puppeteer.launch(launchOptions);
+
+    try {
+      // Generate PDF for each invoice and append to archive
+      for (const invoice of invoices) {
+        const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(invoice.id) as any[];
+        const pdfBuffer = await generatePDF(invoice, lineItems, browser);
+        const entryName = buildFeeMemoName(
+          invoice.invoice_number,
+          invoice.client_name || 'Client',
+          invoice.date || ''
+        );
+        archive.append(pdfBuffer, { name: `${entryName}.pdf` });
+      }
+    } finally {
+      await browser.close().catch(console.error);
     }
 
     await archive.finalize();
@@ -222,7 +237,6 @@ router.post('/', (req: Request, res: Response) => {
     if (!client_id) return res.status(400).json({ error: 'Client is required' });
     if (!line_items || line_items.length === 0) return res.status(400).json({ error: 'At least one service/line item is required' });
     const invoiceDate = date || new Date().toISOString().split('T')[0];
-    const invoiceNumber = generateInvoiceNumber(invoiceDate);
     const taxRate = tax_rate || 0;
     // Calculate totals
     let subtotal = 0;
@@ -242,6 +256,7 @@ router.post('/', (req: Request, res: Response) => {
       VALUES (?, ?, ?, ?, ?)
     `);
     const transaction = db.transaction(() => {
+      const invoiceNumber = generateInvoiceNumber(invoiceDate);
       const result = insertInvoice.run(
         invoiceNumber, client_id, invoiceDate, date_paid || null, notes || null,
         case_name || null, case_party1_type || null, case_plaintiff || null,
