@@ -7,6 +7,8 @@ import clientsRouter from './routes/clients';
 import invoicesRouter from './routes/invoices';
 import dashboardRouter from './routes/dashboard';
 import settingsRouter from './routes/settings';
+import backupsRouter from './routes/backups';
+import { startBackupScheduler } from './services/backup';
 // Load .env: try userData path (Electron) first, then project root
 if (process.env.ELECTRON === '1' && process.env.COPIES_PATH) {
   const userDataEnvPath = path.join(path.dirname(process.env.COPIES_PATH), '.env');
@@ -36,6 +38,7 @@ app.use('/api/clients', clientsRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/backups', backupsRouter);
 // Serve React build in production (not needed in Electron — it loads files directly)
 if (!isElectron) {
   const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
@@ -46,6 +49,7 @@ if (!isElectron) {
 }
 // Initialize DB and start server
 initDatabase();
+startBackupScheduler();
 app.listen(PORT as number, '127.0.0.1', () => {
   console.log(`🚀 LexLedger server running on http://127.0.0.1:${PORT}`);
   // Signal to Electron parent process that the server is ready

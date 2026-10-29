@@ -63,7 +63,8 @@ export interface DashboardData {
   stats: {
     total_invoices: number;
     total_billed: number;
-    total_paid: number;
+    total_received: number;
+    total_tds: number;
     total_outstanding: number;
     total_unpaid: number;
     paid_count: number;
@@ -91,6 +92,21 @@ export interface FirmProfile {
   smtp_user: string;
   smtp_pass: string;
   email_client: 'apple_mail' | 'outlook' | 'gmail_web' | 'outlook_web' | 'mailto';
+  backup_enabled: number;
+  backup_dir: string;
+  backup_keep: number;
+}
+export interface BackupFile {
+  file: string;
+  kind: 'regular' | 'pre-restore';
+  created_at: string;
+  size: number;
+}
+export interface BackupInfo {
+  dir: string;
+  defaultDir: string;
+  isDefault: boolean;
+  backups: BackupFile[];
 }
 async function request(url: string, options?: RequestInit) {
   const maxRetries = 5;
@@ -240,3 +256,9 @@ export const sendReminder = (id: number): Promise<{ message: string; method: str
 export const getFirmProfile = (): Promise<FirmProfile> => request('/settings/firm-profile');
 export const updateFirmProfile = (data: Partial<FirmProfile>): Promise<FirmProfile> =>
   request('/settings/firm-profile', { method: 'PUT', body: JSON.stringify(data) });
+// Backups
+export const getBackups = (): Promise<BackupInfo> => request('/backups');
+export const createBackupNow = (): Promise<BackupFile> =>
+  request('/backups', { method: 'POST' });
+export const restoreBackup = (file: string): Promise<{ message: string; invoices: number; clients: number; safetyBackup: string }> =>
+  request('/backups/restore', { method: 'POST', body: JSON.stringify({ file }) });

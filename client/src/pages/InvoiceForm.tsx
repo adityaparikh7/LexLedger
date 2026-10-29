@@ -5,6 +5,7 @@ import {
   type Client, type LineItem, type Payment
 } from '../api';
 import { useToast } from '../context/ToastContext';
+import { todayLocal } from '../dates';
 import { Banknote, X, Loader2, Save, Check, Plus } from 'lucide-react';
 
 interface FormLineItem {
@@ -26,7 +27,7 @@ export default function InvoiceForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clientId, setClientId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(todayLocal());
   const [datePaid, setDatePaid] = useState('');
   const [notes, setNotes] = useState('');
   const [taxRate, setTaxRate] = useState('0');
@@ -119,7 +120,7 @@ export default function InvoiceForm() {
 
   const addPayment = () => {
     setPayments([...payments, {
-      date: new Date().toISOString().split('T')[0],
+      date: todayLocal(),
       amount_received: '',
       tds_amount: '',
     }]);

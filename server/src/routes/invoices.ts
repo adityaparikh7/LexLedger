@@ -5,6 +5,7 @@ import { generateExcel } from '../services/excelGenerator';
 import { generateExportExcel } from '../services/exportGenerator';
 import { composeEmail, saveTempPDF, type EmailClient } from '../services/mailComposer';
 import { getFirmProfile } from '../routes/settings';
+import { toLocalDateString } from '../dates';
 import archiver from 'archiver';
 import path from 'path';
 import fs from 'fs';
@@ -236,7 +237,7 @@ router.post('/', (req: Request, res: Response) => {
     const { client_id, date, date_paid, notes, tax_rate, line_items, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant, amount_received, tds_amount, payments } = req.body;
     if (!client_id) return res.status(400).json({ error: 'Client is required' });
     if (!line_items || line_items.length === 0) return res.status(400).json({ error: 'At least one service/line item is required' });
-    const invoiceDate = date || new Date().toISOString().split('T')[0];
+    const invoiceDate = date || toLocalDateString(new Date());
     const taxRate = tax_rate || 0;
     // Calculate totals
     let subtotal = 0;
@@ -549,11 +550,26 @@ router.post('/:id/remind', async (req: Request, res: Response) => {
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     if (!invoice.client_email) return res.status(400).json({ error: 'Client has no email address' });
 
+    // Quote the remaining balance, not the full memo total, once part-payments or TDS are recorded
+    const received = invoice.amount_received || 0;
+    const tds = invoice.tds_amount || 0;
+    const balance = invoice.total - received - tds;
+    if (balance <= 0.01) return res.status(400).json({ error: 'This memo has no outstanding balance' });
+
     const profile = getFirmProfile();
     const emailClient = profile.email_client || 'mailto';
 
-    const subject = `Payment Reminder: Fee Memo ${invoice.invoice_number} - ₹${invoice.total.toFixed(2)}`;
-    const body = `Dear ${invoice.client_name},\n\nI request you to kindly process payment of my pending fee memo.\n\nThe details of the pending fee memo are set out below:\n\nFee Memo Number: ${invoice.invoice_number}\nOriginal Date: ${invoice.date}\nAmount Due: ₹${invoice.total.toFixed(2)}\n\nPlease arrange payment at your earliest convenience. If you have already made the payment, please provide the payment details for updating my record.`;
+    const details = [
+      `Fee Memo Number: ${invoice.invoice_number}`,
+      `Original Date: ${invoice.date}`,
+    ];
+    if (received > 0 || tds > 0) details.push(`Memo Amount: ₹${invoice.total.toFixed(2)}`);
+    if (received > 0) details.push(`Received: ₹${received.toFixed(2)}`);
+    if (tds > 0) details.push(`TDS Deducted: ₹${tds.toFixed(2)}`);
+    details.push(`Amount Due: ₹${balance.toFixed(2)}`);
+
+    const subject = `Payment Reminder: Fee Memo ${invoice.invoice_number} - ₹${balance.toFixed(2)}`;
+    const body = `Dear ${invoice.client_name},\n\nI request you to kindly process payment of my pending fee memo.\n\nThe details of the pending fee memo are set out below:\n\n${details.join('\n')}\n\nPlease arrange payment at your earliest convenience. If you have already made the payment, please provide the payment details for updating my record.`;
 
     const result = await composeEmail({
       to: invoice.client_email,

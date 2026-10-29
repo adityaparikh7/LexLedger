@@ -89,6 +89,12 @@
       padding-top: 8px;
     }
 
+    .amount-words {
+      margin-top: 8px;
+      text-align: right;
+      font-style: italic;
+    }
+
     .bank {
       margin-top: 30px;
       line-height: 1.6;
@@ -100,6 +106,11 @@
     .signature {
       font-family: "Brush Script MT", cursive;
       font-size: 24px;
+    }
+    .footer {
+      margin-top: 60px;
+      font-size: 10px;
+      color: #666;
     }
   </style>
 </head>
@@ -158,6 +169,8 @@
     </tbody>
   </table>
 
+  <div class="amount-words">({{amount_in_words}})</div>
+
   <div class="bank">
     <strong>Bank Details:</strong>
     <table class="details-table">
@@ -171,6 +184,10 @@
       {{signature_name}}<br/>
     </div>
     {{signature_full}}
+  </div>
+
+  <div class="footer">
+    This is a computer generated document and does not require signature.
   </div>
 
 </body>

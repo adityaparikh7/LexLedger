@@ -1,7 +1,10 @@
-import { useState, useEffect, useContext } from 'react';
-import { getFirmProfile, updateFirmProfile, type FirmProfile } from '../api';
+import { useState, useEffect, useContext, useCallback } from 'react';
+import {
+  getFirmProfile, updateFirmProfile, getBackups, createBackupNow, restoreBackup,
+  type FirmProfile, type BackupInfo, type BackupFile
+} from '../api';
 import { ToastContext } from '../context/ToastContext';
-import { Hand, Landmark, Building, PenTool, Mail, Monitor, Globe, FileText, Info, Save, Loader2, Check, LayoutDashboard } from 'lucide-react';
+import { Hand, Landmark, Building, PenTool, Mail, Monitor, Globe, FileText, Info, Save, Loader2, Check, LayoutDashboard, DatabaseBackup, FolderOpen, ArchiveRestore } from 'lucide-react';
 
 const EMPTY_PROFILE: FirmProfile = {
   firm_name: '',
@@ -20,11 +23,29 @@ const EMPTY_PROFILE: FirmProfile = {
   smtp_user: '',
   smtp_pass: '',
   email_client: 'mailto',
+  backup_enabled: 1,
+  backup_dir: '',
+  backup_keep: 30,
 };
+
+const BACKUP_KEEP_OPTIONS = [7, 14, 30, 60, 90];
+
+/** 2026-10-06T09:30:15 → 06/10/2026, 09:30 */
+const formatBackupDate = (createdAt: string) => {
+  const [date, time = ''] = createdAt.split('T');
+  const [y, m, d] = date.split('-');
+  return `${d}/${m}/${y}, ${time.slice(0, 5)}`;
+};
+
+const formatSize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+const canPickFolder = typeof window !== 'undefined' && !!window.electronAPI?.selectFolder;
 
 const defaultDashboardPreferences = {
   totalBilled: true,
   totalReceived: true,
+  tds: true,
   outstanding: true,
   clients: true,
   totalInvoices: true,
@@ -55,6 +76,19 @@ export default function Settings() {
   });
   const [savedDashboardPrefs, setSavedDashboardPrefs] = useState(dashboardPrefs);
 
+  // Backups
+  const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoringFile, setRestoringFile] = useState<string | null>(null);
+
+  const loadBackups = useCallback(async () => {
+    try {
+      setBackupInfo(await getBackups());
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
+    }
+  }, [addToast]);
+
   useEffect(() => {
     getFirmProfile()
       .then((data) => {
@@ -64,6 +98,8 @@ export default function Settings() {
       .catch((err) => addToast(err.message, 'error'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadBackups(); }, [loadBackups]);
 
   useEffect(() => {
     const changed = JSON.stringify(profile) !== JSON.stringify(savedProfile) ||
@@ -90,12 +126,58 @@ export default function Settings() {
       setSavedDashboardPrefs(dashboardPrefs);
       
       addToast('Settings saved successfully', 'success');
+      loadBackups(); // the backup folder may have changed
     } catch (err: any) {
       addToast(err.message, 'error');
     } finally {
       setSaving(false);
     }
   };
+
+  const handleChooseBackupFolder = async () => {
+    const picked = await window.electronAPI?.selectFolder?.();
+    if (picked) handleChange('backup_dir', picked);
+  };
+
+  const handleBackupNow = async () => {
+    setBackingUp(true);
+    try {
+      const backup = await createBackupNow();
+      addToast(`Backup saved: ${backup.file}`, 'success');
+      loadBackups();
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
+  const handleRestore = async (backup: BackupFile) => {
+    const ok = confirm(
+      `Replace ALL current data with the backup from ${formatBackupDate(backup.created_at)}?\n\n` +
+      'A copy of your current data will be saved to the backup folder first.'
+    );
+    if (!ok) return;
+    setRestoringFile(backup.file);
+    try {
+      const result = await restoreBackup(backup.file);
+      // Restored data includes the firm profile, so reload it
+      const data = await getFirmProfile();
+      setProfile(data);
+      setSavedProfile(data);
+      loadBackups();
+      addToast(`${result.message}. Your previous data was saved as ${result.safetyBackup}`, 'success');
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
+    } finally {
+      setRestoringFile(null);
+    }
+  };
+
+  const lastBackup = backupInfo?.backups.find((b) => b.kind === 'regular');
+  const keepOptions = BACKUP_KEEP_OPTIONS.includes(profile.backup_keep)
+    ? BACKUP_KEEP_OPTIONS
+    : [...BACKUP_KEEP_OPTIONS, profile.backup_keep].sort((a, b) => a - b);
 
   const isProfileEmpty = !profile.firm_name && !profile.firm_address && !profile.firm_email;
 
@@ -419,6 +501,10 @@ export default function Settings() {
                   <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Total Received</span>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dashboardPrefs.tds} onChange={() => handleDashboardPrefChange('tds')} />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>TDS Deducted</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={dashboardPrefs.outstanding} onChange={() => handleDashboardPrefChange('outstanding')} />
                   <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Outstanding</span>
                 </label>
@@ -504,12 +590,128 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* Backups */}
+          <div className="card" style={{ marginBottom: 24 }}>
+            <div className="settings-section" style={{ marginBottom: 0 }}>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><DatabaseBackup size={20} /> Backups</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16, marginTop: -8 }}>
+                Keeps copies of all your clients, memos, payments and settings. Choose a folder inside iCloud Drive, Google Drive or OneDrive to keep an off-site copy.
+              </p>
+              <div style={{ display: 'grid', gap: 16 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!profile.backup_enabled}
+                    onChange={(e) => handleChange('backup_enabled', e.target.checked ? 1 : 0)}
+                  />
+                  <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Back up automatically once a day</span>
+                </label>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Backup Folder</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder={backupInfo ? `Default: ${backupInfo.defaultDir}` : 'Default folder'}
+                      value={profile.backup_dir}
+                      onChange={(e) => handleChange('backup_dir', e.target.value)}
+                      style={{ flex: 1 }}
+                    />
+                    {canPickFolder && (
+                      <button type="button" className="btn btn-outline btn-sm" onClick={handleChooseBackupFolder}>
+                        <FolderOpen size={15} /> Choose…
+                      </button>
+                    )}
+                    {profile.backup_dir && (
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => handleChange('backup_dir', '')}>
+                        Use default
+                      </button>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
+                    Leave empty to use the default folder. Changes apply after you save.
+                  </span>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0, maxWidth: 240 }}>
+                  <label className="form-label">Keep</label>
+                  <select
+                    className="form-select"
+                    value={profile.backup_keep}
+                    onChange={(e) => handleChange('backup_keep', Number(e.target.value))}
+                  >
+                    {keepOptions.map((n) => (
+                      <option key={n} value={n}>Last {n} backups</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '12px 16px',
+                  background: 'var(--bg-glass)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-color)',
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      {lastBackup ? `Last backup: ${formatBackupDate(lastBackup.created_at)}` : 'No backups yet'}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', wordBreak: 'break-all' }}>
+                      {backupInfo ? `Saved in ${backupInfo.dir}` : 'Loading…'}
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={handleBackupNow} disabled={backingUp} style={{ flexShrink: 0 }}>
+                    {backingUp ? <><Loader2 size={15} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 15, height: 15 }} /> Backing up…</> : <><DatabaseBackup size={15} /> Back up now</>}
+                  </button>
+                </div>
+                {backupInfo && backupInfo.backups.length > 0 && (
+                  <div className="table-container" style={{ maxHeight: 280 }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Size</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {backupInfo.backups.map((b) => (
+                          <tr key={b.file}>
+                            <td>
+                              {formatBackupDate(b.created_at)}
+                              {b.kind === 'pre-restore' && (
+                                <span className="badge draft" style={{ fontSize: 10, marginLeft: 8 }}>Before restore</span>
+                              )}
+                            </td>
+                            <td>{formatSize(b.size)}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                onClick={() => handleRestore(b)}
+                                disabled={restoringFile !== null}
+                              >
+                                {restoringFile === b.file ? 'Restoring…' : <><ArchiveRestore size={15} /> Restore</>}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* About */}
           <div className="card">
             <div className="settings-section" style={{ marginBottom: 0 }}>
               <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Info size={20} /> About</h3>
               <div style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.8 }}>
-                <p><strong>LexLedger</strong> v1.3.0</p>
+                <p><strong>LexLedger</strong> v1.3.1</p>
                 <p>A lightweight and easy-to-use invoicing and billing tool designed for legal practices.</p>
                 <div style={{ marginTop: 12 }}>
                   <strong>Key Features:</strong>

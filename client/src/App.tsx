@@ -16,6 +16,7 @@ declare global {
     electronAPI?: {
       isElectron?: boolean;
       platform?: string;
+      selectFolder?: () => Promise<string | null>;
     };
   }
 }
