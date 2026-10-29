@@ -214,8 +214,12 @@ function createWindow() {
 }
 
 // Native folder picker for the renderer (used to choose the backup folder)
-ipcMain.handle('dialog:select-folder', async () => {
-  const options: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'] };
+ipcMain.handle('dialog:select-folder', async (_event, defaultPath?: string) => {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Choose a folder for LexLedger backups',
+    properties: ['openDirectory', 'createDirectory'],
+    ...(typeof defaultPath === 'string' && defaultPath ? { defaultPath } : {}),
+  };
   const result = mainWindow
     ? await dialog.showOpenDialog(mainWindow, options)
     : await dialog.showOpenDialog(options);

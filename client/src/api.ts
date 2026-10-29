@@ -260,5 +260,8 @@ export const updateFirmProfile = (data: Partial<FirmProfile>): Promise<FirmProfi
 export const getBackups = (): Promise<BackupInfo> => request('/backups');
 export const createBackupNow = (): Promise<BackupFile> =>
   request('/backups', { method: 'POST' });
+// Opens the system folder dialog on this machine (the server is always local)
+export const chooseBackupFolder = (startDir?: string): Promise<{ path: string | null }> =>
+  request('/backups/choose-folder', { method: 'POST', body: JSON.stringify({ startDir }) });
 export const restoreBackup = (file: string): Promise<{ message: string; invoices: number; clients: number; safetyBackup: string }> =>
   request('/backups/restore', { method: 'POST', body: JSON.stringify({ file }) });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
 import {
-  getFirmProfile, updateFirmProfile, getBackups, createBackupNow, restoreBackup,
+  getFirmProfile, updateFirmProfile, getBackups, createBackupNow, restoreBackup, chooseBackupFolder,
   type FirmProfile, type BackupInfo, type BackupFile
 } from '../api';
 import { ToastContext } from '../context/ToastContext';
@@ -40,7 +40,6 @@ const formatBackupDate = (createdAt: string) => {
 const formatSize = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
-const canPickFolder = typeof window !== 'undefined' && !!window.electronAPI?.selectFolder;
 
 const defaultDashboardPreferences = {
   totalBilled: true,
@@ -80,6 +79,7 @@ export default function Settings() {
   const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
   const [backingUp, setBackingUp] = useState(false);
   const [restoringFile, setRestoringFile] = useState<string | null>(null);
+  const [choosingFolder, setChoosingFolder] = useState(false);
 
   const loadBackups = useCallback(async () => {
     try {
@@ -134,9 +134,21 @@ export default function Settings() {
     }
   };
 
+  // Opens the system folder dialog: Electron's own dialog in the desktop app, otherwise one opened by the local server
   const handleChooseBackupFolder = async () => {
-    const picked = await window.electronAPI?.selectFolder?.();
-    if (picked) handleChange('backup_dir', picked);
+    if (choosingFolder) return;
+    setChoosingFolder(true);
+    const startDir = profile.backup_dir || backupInfo?.defaultDir;
+    try {
+      const picked = window.electronAPI?.selectFolder
+        ? await window.electronAPI.selectFolder(startDir)
+        : (await chooseBackupFolder(startDir)).path;
+      if (picked) handleChange('backup_dir', picked);
+    } catch (err: unknown) {
+      addToast((err as Error).message, 'error');
+    } finally {
+      setChoosingFolder(false);
+    }
   };
 
   const handleBackupNow = async () => {
@@ -614,14 +626,14 @@ export default function Settings() {
                       className="form-input"
                       placeholder={backupInfo ? `Default: ${backupInfo.defaultDir}` : 'Default folder'}
                       value={profile.backup_dir}
-                      onChange={(e) => handleChange('backup_dir', e.target.value)}
-                      style={{ flex: 1 }}
+                      onClick={handleChooseBackupFolder}
+                      readOnly
+                      title="Click to choose a folder"
+                      style={{ flex: 1, cursor: 'pointer' }}
                     />
-                    {canPickFolder && (
-                      <button type="button" className="btn btn-outline btn-sm" onClick={handleChooseBackupFolder}>
-                        <FolderOpen size={15} /> Choose…
-                      </button>
-                    )}
+                    <button type="button" className="btn btn-outline btn-sm" onClick={handleChooseBackupFolder} disabled={choosingFolder}>
+                      <FolderOpen size={15} /> {choosingFolder ? 'Choosing…' : 'Choose…'}
+                    </button>
                     {profile.backup_dir && (
                       <button type="button" className="btn btn-outline btn-sm" onClick={() => handleChange('backup_dir', '')}>
                         Use default
@@ -629,7 +641,7 @@ export default function Settings() {
                     )}
                   </div>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
-                    Leave empty to use the default folder. Changes apply after you save.
+                    Opens your system's folder picker. Changes apply after you save.
                   </span>
                 </div>
                 <div className="form-group" style={{ marginBottom: 0, maxWidth: 240 }}>
