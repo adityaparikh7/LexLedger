@@ -5,28 +5,43 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "dev:cloud": "tsx watch src/cloud/index.ts",
+    "typecheck:cloud": "tsc -p tsconfig.cloud.json",
+    "build:cloud": "tsup src/cloud/index.ts --format cjs --target node22 --out-dir dist-cloud --clean --sourcemap --external @electric-sql/pglite && cp src/services/memo-template.html dist-cloud/",
+    "start:cloud": "node dist-cloud/index.js",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "archiver": "^7.0.1",
     "better-sqlite3": "^11.7.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.45.4",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.7.2",
+    "helmet": "^8.3.0",
     "nodemailer": "^6.9.16",
     "pdfkit": "^0.15.1",
+    "pg": "^8.23.1",
     "puppeteer": "^24.40.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.13",
     "@types/archiver": "^7.0.0",
     "@types/better-sqlite3": "^7.6.12",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/nodemailer": "^6.4.17",
     "@types/pdfkit": "^0.13.8",
+    "@types/pg": "^8.23.1",
     "@types/uuid": "^10.0.0",
+    "drizzle-kit": "^0.31.11",
+    "tsup": "^9.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }

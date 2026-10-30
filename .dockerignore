@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/dist-cloud
+dist-electron
+electron
+puppeteer-cache
+build
+data
+copies
+docs
+assets
+design-system
+.git
+.env
+*.log

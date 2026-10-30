@@ -22,6 +22,8 @@ export default function Support() {
           <div style={{ display: 'grid', gap: 16 }}>
             <div style={{
               display: 'flex',
+              flexWrap: 'wrap',
+              gap: 12,
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '12px 16px',
@@ -36,7 +38,7 @@ export default function Support() {
                   {/* <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Average response time: 24 hours</div> */}
                 </div>
               </div>
-              <a href="mailto:lexledgersupport@gmail.com" className="badge sent" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <a href="mailto:lexledgersupport@gmail.com" className="badge sent" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', textTransform: 'none', overflowWrap: 'anywhere' }}>
                 lexledgersupport@gmail.com
                 <ExternalLink size={12} />
               </a>

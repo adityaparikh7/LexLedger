@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  getClients, createClient, updateClient, deleteClient,
-  type Client
-} from '../api';
+import type { Client, Id } from '../api';
+import { getClients, createClient, updateClient, deleteClient, useDataVersion } from '../data';
 import { useToast } from '../context/ToastContext';
+import { useIsPhone } from '../hooks/useMediaQuery';
 import { Search, Edit2, Trash2, Users, X, Save, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -15,6 +14,7 @@ export default function Clients() {
   const [searchTerm, setSearchTerm] = useState('');
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const isPhone = useIsPhone();
   // Form state
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -30,7 +30,9 @@ export default function Clients() {
       setLoading(false);
     }
   }, [addToast]);
-  useEffect(() => { fetchClients(); }, [fetchClients]);
+  // Re-read when data changes, including changes synced from other devices
+  const dataVersion = useDataVersion();
+  useEffect(() => { fetchClients(); }, [fetchClients, dataVersion]);
   const openAddModal = () => {
     setEditingClient(null);
     setName('');
@@ -63,7 +65,7 @@ export default function Clients() {
       addToast((err as Error).message, 'error');
     }
   };
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: Id) => {
     if (!confirm('Delete this client? This cannot be undone.')) return;
     try {
       await deleteClient(id);
@@ -93,20 +95,41 @@ export default function Clients() {
       </div>
       {/* Search */}
       <div className="filter-bar" style={{ marginBottom: 24 }}>
-        <div style={{ position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-muted)' }} />
+        <div className="search-field">
+          <Search size={16} />
           <input
             className="form-input"
+            type="search"
             placeholder="Search clients..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            style={{ width: 300, paddingLeft: 36 }}
           />
         </div>
       </div>
       {/* Client table */}
-      <div className="table-container">
-        {filtered.length > 0 ? (
+      <div className={`table-container${isPhone ? ' has-cards' : ''}`}>
+        {filtered.length > 0 && isPhone ? (
+          <div className="card-list">
+            {filtered.map(client => (
+              <div key={client.id} className="list-card">
+                <div className="list-card-main" onClick={() => navigate('/invoices', { state: { clientName: client.name } })}>
+                  <div>
+                    <div className="list-card-title">{client.name}</div>
+                    {(client.email || client.phone) && (
+                      <div className="list-card-subtitle">{[client.email, client.phone].filter(Boolean).join(' · ')}</div>
+                    )}
+                    {client.address && <div className="list-card-meta">{client.address}</div>}
+                  </div>
+                </div>
+                <div className="list-card-actions">
+                  <span className="spacer" />
+                  <button className="btn-icon btn-icon-blue" title="Edit" aria-label={`Edit ${client.name}`} onClick={() => openEditModal(client)}><Edit2 size={18} /></button>
+                  <button className="btn-icon btn-icon-red" title="Delete" aria-label={`Delete ${client.name}`} onClick={() => handleDelete(client.id)}><Trash2 size={18} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filtered.length > 0 ? (
           <table>
             <thead>
               <tr>

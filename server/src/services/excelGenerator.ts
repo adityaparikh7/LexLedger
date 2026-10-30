@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
-import { getFirmProfile } from '../routes/settings';
 import { amountInWords } from './amountInWords';
+import type { MemoProfile } from './memoProfile';
 
 interface Invoice {
   invoice_number: string;
@@ -29,13 +29,10 @@ interface LineItem {
   amount: number;
 }
 
-export async function generateExcel(invoice: Invoice, lineItems: LineItem[]): Promise<Buffer> {
+export async function generateExcel(invoice: Invoice, lineItems: LineItem[], profile: MemoProfile): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'LegalBill';
   workbook.created = new Date();
-
-  // Get firm profile for dynamic details
-  const profile = getFirmProfile();
 
   const sheet = workbook.addWorksheet('Memo of Fees', {
     properties: { defaultColWidth: 18 },

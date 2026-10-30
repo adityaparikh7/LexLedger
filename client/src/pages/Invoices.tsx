@@ -1,11 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import type { ComposeRequest, Invoice, Payment, Id } from '../api';
 import {
   getInvoices, getInvoice, deleteInvoice, updateInvoiceStatus,
   downloadPDF, downloadExcel, sendInvoice, sendReminder,
-  fetchPDFPreviewUrl,
-  type Invoice, type Payment
-} from '../api';
+  fetchPDFPreviewUrl, fetchPDFFile, useDataVersion,
+} from '../data';
+import ShareMemoDialog from '../components/ShareMemoDialog';
+import { invoiceLabel } from '../invoiceLabel';
+import { canShareFiles, openCompose } from '../share';
+import { useIsPhone } from '../hooks/useMediaQuery';
 import { useToast } from '../context/ToastContext';
 import { todayLocal } from '../dates';
 import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, X, Loader2, Check, FileDown, Eye, CircleEllipsis } from 'lucide-react';
@@ -24,27 +28,35 @@ export default function Invoices() {
   const [searchTerm, setSearchTerm] = useState(location.state?.clientName || '');
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const isPhone = useIsPhone();
 
   // Overflow dropdown state
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<Id | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
   useEffect(() => {
     if (openMenuId === null) return;
-    const handleOutside = (e: MouseEvent) => {
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setOpenMenuId(null);
       }
     };
     document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
   }, [openMenuId]);
 
   // Payment modal state
   const [paymentModal, setPaymentModal] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
   const [paymentEntries, setPaymentEntries] = useState<FormPayment[]>([]);
   const [submittingPayment, setSubmittingPayment] = useState(false);
+
+  // Phone "send" flow: the fee memo PDF, ready for the share sheet
+  const [shareMemo, setShareMemo] = useState<{ file: File; compose: ComposeRequest } | null>(null);
 
   // PDF Preview modal state
   const [previewModal, setPreviewModal] = useState<{ open: boolean; invoice: Invoice | null; blobUrl: string | null; loading: boolean }>(
@@ -61,8 +73,10 @@ export default function Invoices() {
       setLoading(false);
     }
   }, [statusFilter, addToast]);
-  useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
-  const handleDelete = async (id: number) => {
+  // Re-read when data changes, including changes synced from other devices
+  const dataVersion = useDataVersion();
+  useEffect(() => { fetchInvoices(); }, [fetchInvoices, dataVersion]);
+  const handleDelete = async (id: Id) => {
     if (!confirm('Are you sure you want to delete this invoice?')) return;
     try {
       await deleteInvoice(id);
@@ -173,10 +187,22 @@ export default function Invoices() {
     }
   };
 
-  const handleSend = async (id: number) => {
+  const handleSend = async (id: Id) => {
     try {
       const result = await sendInvoice(id);
-      if (result.autoAttached) {
+      if (result.compose && canShareFiles()) {
+        // Phone: attach the PDF through the share sheet
+        const inv = invoices.find(i => i.id === id);
+        if (inv) setShareMemo({ file: await fetchPDFFile(inv.id, inv.invoice_number, inv.client_name, inv.date), compose: result.compose });
+      } else if (result.compose) {
+        // Cloud server: compose on this device and download the PDF to attach
+        const inv = invoices.find(i => i.id === id);
+        const inBrowser = openCompose(result.compose);
+        if (inv) await downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date);
+        addToast(inBrowser
+          ? 'Mail compose opened in a new tab — the PDF is downloading. Please attach it to the email.'
+          : 'Mail app opened — the PDF is downloading. Please attach it to the email.', 'info');
+      } else if (result.autoAttached) {
         addToast('Invoice opened in mail client with PDF attached!', 'success');
       } else if (result.triggerPdfDownload) {
         // For browser-based mail clients, auto-download the PDF
@@ -193,9 +219,10 @@ export default function Invoices() {
       addToast((err as Error).message, 'error');
     }
   };
-  const handleRemind = async (id: number) => {
+  const handleRemind = async (id: Id) => {
     try {
-      await sendReminder(id);
+      const result = await sendReminder(id);
+      if (result.compose) openCompose(result.compose);
       addToast('Reminder opened in mail client!', 'success');
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
@@ -227,7 +254,7 @@ export default function Invoices() {
     `₹${val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const filtered = invoices.filter(inv =>
-    inv.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    invoiceLabel(inv).toLowerCase().includes(searchTerm.toLowerCase()) ||
     inv.client_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -237,6 +264,83 @@ export default function Invoices() {
   const modalRemaining = paymentModal.invoice
     ? paymentModal.invoice.total - modalTotalReceived - modalTotalTds
     : 0;
+
+  const renderStatusSelect = (inv: Invoice, style?: CSSProperties) => (
+    <select
+      className="form-select"
+      value={inv.status}
+      onChange={e => handleStatusChange(inv, e.target.value)}
+      style={style}
+      aria-label={`Status of invoice ${invoiceLabel(inv)}`}
+    >
+      <option value="draft">Draft</option>
+      <option value="sent">Sent</option>
+      <option value="paid">Paid</option>
+      <option value="unpaid">Unpaid</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  );
+
+  // Row actions, shared by the desktop table and the phone cards (where tapping the card edits)
+  const renderActions = (inv: Invoice, inCard = false) => (
+      <div className="btn-group">
+        {/* Primary actions — always visible */}
+        {!inCard && (
+          <button className="btn-icon btn-icon-blue" title="Edit Invoice" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
+            <Edit2 size={18} />
+          </button>
+        )}
+        <button className="btn-icon" title="Preview PDF" style={{ color: 'var(--text-secondary)' }} onClick={() => handleOpenPreview(inv)}>
+          <Eye size={18} />
+        </button>
+        <button className="btn-icon btn-icon-amber" title="Send via Mail" onClick={() => handleSend(inv.id)}>
+          <Send size={18} />
+        </button>
+
+        {/* Overflow menu */}
+        <div className="action-menu" ref={openMenuId === inv.id ? dropdownRef : undefined}>
+          <button
+            className="btn-icon"
+            title="More actions"
+            style={{ color: 'var(--text-secondary)' }}
+            onClick={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
+          >
+            <CircleEllipsis size={18} />
+          </button>
+          {openMenuId === inv.id && (
+            <div className="dropdown-menu">
+              <button
+                className="dropdown-item"
+                onClick={() => { downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date); setOpenMenuId(null); }}
+              >
+                <FileDown size={15} /> Download PDF
+              </button>
+              <button
+                className="dropdown-item"
+                onClick={() => { downloadExcel(inv.id, inv.invoice_number); setOpenMenuId(null); }}
+              >
+                <FileSpreadsheet size={15} /> Download Excel
+              </button>
+              {(inv.status === 'sent' || inv.status === 'unpaid') && (
+                <button
+                  className="dropdown-item amber"
+                  onClick={() => { handleRemind(inv.id); setOpenMenuId(null); }}
+                >
+                  <Bell size={15} /> Send Reminder
+                </button>
+              )}
+              <div className="dropdown-divider" />
+              <button
+                className="dropdown-item danger"
+                onClick={() => { handleDelete(inv.id); setOpenMenuId(null); }}
+              >
+                <Trash2 size={15} /> Delete Invoice
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+  );
 
   if (loading) {
     return <div className="loading-center"><div className="spinner"></div></div>;
@@ -254,14 +358,14 @@ export default function Invoices() {
       </div>
       {/* Filter bar */}
       <div className="filter-bar" style={{ marginBottom: 24 }}>
-        <div style={{ position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-muted)' }} />
+        <div className="search-field">
+          <Search size={16} />
           <input
             className="form-input"
+            type="search"
             placeholder="Search invoices..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            style={{ width: 280, paddingLeft: 36 }}
           />
         </div>
         <select
@@ -278,8 +382,8 @@ export default function Invoices() {
         </select>
       </div>
       {/* Invoice table */}
-      <div className="table-container">
-        {filtered.length > 0 ? (
+      <div className={`table-container${isPhone ? ' has-cards' : ''}`}>
+        {filtered.length > 0 && !isPhone ? (
           <table>
             <thead>
               <tr>
@@ -302,7 +406,7 @@ export default function Invoices() {
                   <tr key={inv.id}>
                     <td style={{ fontWeight: 600, color: 'var(--accent-blue)', cursor: 'pointer' }}
                       onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
-                      {inv.invoice_number}
+                      {invoiceLabel(inv)}
                     </td>
                     <td>{inv.client_name}</td>
                     <td>{formatDate(inv.date)}</td>
@@ -317,81 +421,42 @@ export default function Invoices() {
                       {inv.amount_received || inv.tds_amount ? formatCurrency(balance) : '—'}
                     </td>
                     <td>
-                      <select
-                        className="form-select"
-                        value={inv.status}
-                        onChange={e => handleStatusChange(inv, e.target.value)}
-                        style={{ width: 'auto', minWidth: 100, padding: '4px 28px 4px 10px', fontSize: 12 }}
-                      >
-                        <option value="draft">Draft</option>
-                        <option value="sent">Sent</option>
-                        <option value="paid">Paid</option>
-                        <option value="unpaid">Unpaid</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
+                      {renderStatusSelect(inv, { width: 'auto', minWidth: 100, padding: '4px 28px 4px 10px', fontSize: 12 })}
                     </td>
                     <td className={`sticky-right${openMenuId === inv.id ? ' menu-open' : ''}`}>
-                      <div className="btn-group">
-                        {/* Primary actions — always visible */}
-                        <button className="btn-icon btn-icon-blue" title="Edit Invoice" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
-                          <Edit2 size={18} />
-                        </button>
-                        <button className="btn-icon" title="Preview PDF" style={{ color: 'var(--text-secondary)' }} onClick={() => handleOpenPreview(inv)}>
-                          <Eye size={18} />
-                        </button>
-                        <button className="btn-icon btn-icon-amber" title="Send via Mail" onClick={() => handleSend(inv.id)}>
-                          <Send size={18} />
-                        </button>
-
-                        {/* Overflow menu */}
-                        <div className="action-menu" ref={openMenuId === inv.id ? dropdownRef : undefined}>
-                          <button
-                            className="btn-icon"
-                            title="More actions"
-                            style={{ color: 'var(--text-secondary)' }}
-                            onClick={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
-                          >
-                            <CircleEllipsis size={18} />
-                          </button>
-                          {openMenuId === inv.id && (
-                            <div className="dropdown-menu">
-                              <button
-                                className="dropdown-item"
-                                onClick={() => { downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date); setOpenMenuId(null); }}
-                              >
-                                <FileDown size={15} /> Download PDF
-                              </button>
-                              <button
-                                className="dropdown-item"
-                                onClick={() => { downloadExcel(inv.id, inv.invoice_number); setOpenMenuId(null); }}
-                              >
-                                <FileSpreadsheet size={15} /> Download Excel
-                              </button>
-                              {(inv.status === 'sent' || inv.status === 'unpaid') && (
-                                <button
-                                  className="dropdown-item amber"
-                                  onClick={() => { handleRemind(inv.id); setOpenMenuId(null); }}
-                                >
-                                  <Bell size={15} /> Send Reminder
-                                </button>
-                              )}
-                              <div className="dropdown-divider" />
-                              <button
-                                className="dropdown-item danger"
-                                onClick={() => { handleDelete(inv.id); setOpenMenuId(null); }}
-                              >
-                                <Trash2 size={15} /> Delete Invoice
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      {renderActions(inv)}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        ) : filtered.length > 0 ? (
+          <div className="card-list">
+            {filtered.map(inv => {
+              const balance = inv.total - (inv.amount_received || 0) - (inv.tds_amount || 0);
+              return (
+                <div key={inv.id} className="list-card">
+                  <div className="list-card-main" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
+                    <div>
+                      <div className="list-card-title">{invoiceLabel(inv)}</div>
+                      <div className="list-card-subtitle">{inv.client_name}</div>
+                      <div className="list-card-meta">{formatDate(inv.date)}{inv.case_name ? ` · ${inv.case_name}` : ''}</div>
+                    </div>
+                    <div className="list-card-amount">
+                      <strong>{formatCurrency(inv.total)}</strong>
+                      {(inv.amount_received || inv.tds_amount) && balance > 0.01 ? <span className="due">{formatCurrency(balance)} due</span> : null}
+                    </div>
+                  </div>
+                  <div className={`list-card-actions${openMenuId === inv.id ? ' menu-open' : ''}`}>
+                    {renderStatusSelect(inv)}
+                    <span className="spacer" />
+                    {renderActions(inv, true)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className="empty-state">
             <div className="empty-icon"><FileText size={48} /></div>
@@ -416,7 +481,7 @@ export default function Invoices() {
               </button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-              Invoice <strong>{paymentModal.invoice.invoice_number}</strong> — Total: <strong>{formatCurrency(paymentModal.invoice.total)}</strong>
+              Invoice <strong>{invoiceLabel(paymentModal.invoice)}</strong> — Total: <strong>{formatCurrency(paymentModal.invoice.total)}</strong>
             </p>
             <form onSubmit={handlePaymentSubmit}>
               {/* Payment entries */}
@@ -434,30 +499,22 @@ export default function Invoices() {
                   </button>
                 </div>
                 {paymentEntries.map((entry, idx) => (
-                  <div key={idx} style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr 1fr auto',
-                    gap: 8,
-                    marginBottom: 8,
-                    padding: 12,
-                    borderRadius: 8,
-                    background: 'var(--bg-tertiary, rgba(0,0,0,0.03))',
-                  }}>
+                  <div key={idx} className="payment-row">
                     <div>
-                      {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Date</label>}
+                      <label>Date</label>
                       <input
                         type="date"
                         className="form-input"
                         value={entry.date}
                         onChange={(e) => updatePaymentEntry(idx, 'date', e.target.value)}
                         required
-                        style={{ fontSize: 13, padding: '6px 8px' }}
                       />
                     </div>
                     <div>
-                      {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Amount Received (₹)</label>}
+                      <label>Amount Received (₹)</label>
                       <input
                         type="number"
+                        inputMode="decimal"
                         className="form-input"
                         placeholder="0.00"
                         value={entry.amount_received}
@@ -465,29 +522,27 @@ export default function Invoices() {
                         min="0"
                         step="0.01"
                         required
-                        style={{ fontSize: 13, padding: '6px 8px' }}
                       />
                     </div>
                     <div>
-                      {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>TDS Amount (₹)</label>}
+                      <label>TDS Amount (₹)</label>
                       <input
                         type="number"
+                        inputMode="decimal"
                         className="form-input"
                         placeholder="0.00"
                         value={entry.tds_amount}
                         onChange={(e) => updatePaymentEntry(idx, 'tds_amount', e.target.value)}
                         min="0"
                         step="0.01"
-                        style={{ fontSize: 13, padding: '6px 8px' }}
                       />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <div className="payment-row-remove">
                       {paymentEntries.length > 1 && (
                         <button
                           type="button"
                           className="btn-icon"
                           onClick={() => removePaymentEntry(idx)}
-                          style={{ color: 'var(--accent-red)', padding: 4 }}
                           title="Remove">
                           <X size={16} />
                         </button>
@@ -541,6 +596,10 @@ export default function Invoices() {
         </div>
       )}
 
+      {shareMemo && (
+        <ShareMemoDialog file={shareMemo.file} compose={shareMemo.compose} onClose={() => setShareMemo(null)} />
+      )}
+
       {/* PDF Preview Modal */}
       {previewModal.open && previewModal.invoice && (
         <div className="modal-overlay" onClick={handleClosePreview}>
@@ -550,7 +609,7 @@ export default function Invoices() {
                 <FileText size={18} style={{ color: 'var(--accent-blue)' }} />
                 <span>
                   Fee Memo&nbsp;
-                  <strong>{previewModal.invoice.invoice_number}</strong>
+                  <strong>{invoiceLabel(previewModal.invoice)}</strong>
                   &nbsp;—&nbsp;{previewModal.invoice.client_name}
                 </span>
               </div>
@@ -586,10 +645,20 @@ export default function Invoices() {
                 </div>
               )}
               {previewModal.blobUrl && (
-                <iframe
-                  src={previewModal.blobUrl}
-                  title={`Preview – ${previewModal.invoice.invoice_number}`}
-                />
+                <>
+                  <iframe
+                    src={previewModal.blobUrl}
+                    title={`Preview – ${invoiceLabel(previewModal.invoice)}`}
+                  />
+                  {/* Phone browsers can't display a PDF inside the page */}
+                  <div className="pdf-mobile-fallback">
+                    <FileText size={40} style={{ color: 'var(--accent-blue)' }} />
+                    <span>The fee memo is ready.</span>
+                    <a className="btn btn-primary" href={previewModal.blobUrl} target="_blank" rel="noopener">
+                      <Eye size={16} /> Open PDF
+                    </a>
+                  </div>
+                </>
               )}
             </div>
           </div>

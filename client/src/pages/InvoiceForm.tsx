@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  getClients, getInvoice, createInvoice, updateInvoice, createClient, updateInvoiceStatus,
-  type Client, type LineItem, type Payment
-} from '../api';
+import type { Client, LineItem, Payment } from '../api';
+import { getClients, getInvoice, createInvoice, updateInvoice, createClient, updateInvoiceStatus } from '../data';
 import { useToast } from '../context/ToastContext';
 import { todayLocal } from '../dates';
 import { Banknote, X, Loader2, Save, Check, Plus } from 'lucide-react';
@@ -40,6 +38,8 @@ export default function InvoiceForm() {
     { description: '', hours: '', rate: '' }
   ]);
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  // An invoice created offline gets its number from the server when it syncs
+  const [numberPending, setNumberPending] = useState(false);
   const [payments, setPayments] = useState<FormPayment[]>([]);
 
   // Client Modal State
@@ -56,13 +56,14 @@ export default function InvoiceForm() {
         const clientList = await getClients();
         setClients(clientList);
         if (isEditing) {
-          const invoice = await getInvoice(Number(id));
+          const invoice = await getInvoice(id!);
           setClientId(String(invoice.client_id));
           setDate(invoice.date);
           setDatePaid(invoice.date_paid || '');
           setNotes(invoice.notes || '');
           setTaxRate(String(invoice.tax_rate));
-          setInvoiceNumber(invoice.invoice_number);
+          setInvoiceNumber(invoice.invoice_number ?? '');
+          setNumberPending(invoice.invoice_number === null);
           setCaseName(invoice.case_name || '');
           setCaseParty1Type(invoice.case_party1_type || 'None');
           setCasePlaintiff(invoice.case_plaintiff || '');
@@ -189,8 +190,8 @@ export default function InvoiceForm() {
     setSaving(true);
     try {
       const payload = {
-        client_id: Number(clientId),
-        invoice_number: isEditing ? invoiceNumber : undefined,
+        client_id: clientId,
+        invoice_number: isEditing && !numberPending ? invoiceNumber : undefined,
         date,
         date_paid: datePaid || null,
         notes: notes || null,
@@ -215,9 +216,9 @@ export default function InvoiceForm() {
           })),
       };
       if (isEditing) {
-        await updateInvoice(Number(id), payload);
+        await updateInvoice(id!, payload);
         if (remainingBalance <= 0.01 && (totalReceived > 0 || totalTds > 0)) {
-          await updateInvoiceStatus(Number(id), 'paid');
+          await updateInvoiceStatus(id!, 'paid');
         }
         addToast('Invoice updated!', 'success');
       } else {
@@ -270,7 +271,9 @@ export default function InvoiceForm() {
                   className="form-input"
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
-                  required
+                  placeholder={numberPending ? 'Assigned when this invoice syncs' : undefined}
+                  disabled={numberPending}
+                  required={!numberPending}
                 />
               </div>
             )}
@@ -465,6 +468,7 @@ export default function InvoiceForm() {
             {lineItems.map((item, idx) => (
               <div key={idx} className="line-item-row">
                 <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="mobile-label">Description</label>
                   <input
                     className="form-input"
                     placeholder="Service description..."
@@ -476,8 +480,10 @@ export default function InvoiceForm() {
                   />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="mobile-label">Hours</label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     className="form-input"
                     placeholder="0"
                     value={item.hours}
@@ -489,8 +495,10 @@ export default function InvoiceForm() {
                   />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="mobile-label">Rate (₹)</label>
                   <input
                     type="number"
+                    inputMode="decimal"
                     className="form-input"
                     placeholder="0.00"
                     value={item.rate}
@@ -503,6 +511,7 @@ export default function InvoiceForm() {
                   />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="mobile-label">Amount</label>
                   <input
                     className="form-input"
                     value={`₹${calculateAmount(item).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -518,7 +527,8 @@ export default function InvoiceForm() {
                   className="btn-icon"
                   onClick={() => removeLineItem(idx)}
                   style={{ color: "var(--accent-red)", alignSelf: "center" }}
-                  title="Remove">
+                  title="Remove service"
+                  aria-label="Remove service">
                   <X size={18} />
                 </button>
               </div>
@@ -589,58 +599,49 @@ export default function InvoiceForm() {
               <>
                 <div style={{ marginBottom: 16 }}>
                   {payments.map((entry, idx) => (
-                    <div key={idx} style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr 1fr auto',
-                      gap: 8,
-                      marginBottom: 8,
-                      padding: 12,
-                      borderRadius: 8,
-                      background: 'var(--bg-tertiary, rgba(0,0,0,0.03))',
-                    }}>
+                    <div key={idx} className="payment-row">
                       <div>
-                        {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Date</label>}
+                        <label>Date</label>
                         <input
                           type="date"
                           className="form-input"
                           value={entry.date}
                           onChange={(e) => updatePayment(idx, 'date', e.target.value)}
-                          style={{ fontSize: 13, padding: '6px 8px' }}
                         />
                       </div>
                       <div>
-                        {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Amount Received (₹)</label>}
+                        <label>Amount Received (₹)</label>
                         <input
                           type="number"
+                          inputMode="decimal"
                           className="form-input"
                           placeholder="0.00"
                           value={entry.amount_received}
                           onChange={(e) => updatePayment(idx, 'amount_received', e.target.value)}
                           min="0"
                           step="0.01"
-                          style={{ fontSize: 13, padding: '6px 8px' }}
                         />
                       </div>
                       <div>
-                        {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>TDS Amount (₹)</label>}
+                        <label>TDS Amount (₹)</label>
                         <input
                           type="number"
+                          inputMode="decimal"
                           className="form-input"
                           placeholder="0.00"
                           value={entry.tds_amount}
                           onChange={(e) => updatePayment(idx, 'tds_amount', e.target.value)}
                           min="0"
                           step="0.01"
-                          style={{ fontSize: 13, padding: '6px 8px' }}
                         />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                      <div className="payment-row-remove">
                         <button
                           type="button"
                           className="btn-icon"
                           onClick={() => removePayment(idx)}
-                          style={{ color: 'var(--accent-red)', padding: 4 }}
-                          title="Remove">
+                          title="Remove payment"
+                          aria-label="Remove payment">
                           <X size={18} />
                         </button>
                       </div>
@@ -691,11 +692,15 @@ export default function InvoiceForm() {
             />
           </div>
         </div>
-        {/* Submit */}
-        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+        {/* Submit (a sticky bar with the running total on phones) */}
+        <div className="form-actions">
+          <div className="form-actions-total">
+            Total
+            <strong>₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+          </div>
           <button
             type="button"
-            className="btn btn-outline"
+            className="btn btn-outline btn-cancel"
             onClick={() => navigate("/invoices")}>
             Cancel
           </button>

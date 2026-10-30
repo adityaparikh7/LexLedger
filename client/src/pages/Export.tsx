@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getClients, downloadExportExcel, downloadBulkPDFs, type Client } from '../api';
+import type { Client } from '../api';
+import { getClients, downloadExportExcel, downloadBulkPDFs } from '../data';
 import { useToast } from '../context/ToastContext';
 import { Loader2, Calendar, Download, Users, FileArchive, FileSpreadsheet } from 'lucide-react';
 
@@ -14,7 +15,7 @@ export default function Export() {
 
   // Bulk PDF export state
   const [clients, setClients] = useState<Client[]>([]);
-  const [pdfClientId, setPdfClientId] = useState<number | ''>('');
+  const [pdfClientId, setPdfClientId] = useState<string>('');
   const [pdfStatusFilter, setPdfStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -90,7 +91,7 @@ export default function Export() {
     }
     setPdfLoading(true);
     try {
-      const client = clients.find(c => c.id === pdfClientId);
+      const client = clients.find(c => String(c.id) === pdfClientId);
       await downloadBulkPDFs(pdfClientId, pdfStatusFilter, client?.name || 'Client');
       addToast('PDF export downloaded successfully!', 'success');
     } catch (err: unknown) {
@@ -137,6 +138,7 @@ export default function Export() {
                 justifyContent: 'center',
                 gap: 6,
                 padding: '8px 12px',
+                minHeight: 40,
                 borderRadius: 8,
                 border: 'none',
                 cursor: 'pointer',
@@ -159,6 +161,7 @@ export default function Export() {
                 justifyContent: 'center',
                 gap: 6,
                 padding: '8px 12px',
+                minHeight: 40,
                 borderRadius: 8,
                 border: 'none',
                 cursor: 'pointer',
@@ -181,7 +184,7 @@ export default function Export() {
               </p>
 
               {/* Preset buttons */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
                 {[
                   { key: 'current_fy' as const, label: 'Current FY' },
                   { key: 'previous_fy' as const, label: 'Previous FY' },
@@ -200,7 +203,7 @@ export default function Export() {
               </div>
 
               {/* Date range */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
                 <div>
                   <label className="form-label">Start Date</label>
                   <input
@@ -279,7 +282,7 @@ export default function Export() {
                 <select
                   className="form-select"
                   value={pdfClientId}
-                  onChange={(e) => setPdfClientId(e.target.value ? Number(e.target.value) : '')}
+                  onChange={(e) => setPdfClientId(e.target.value)}
                   style={{ width: '100%' }}
                   id="pdf-export-client"
                 >
@@ -293,7 +296,7 @@ export default function Export() {
               {/* Invoice status filter */}
               <div style={{ marginBottom: 20 }}>
                 <label className="form-label" style={{ marginBottom: 8 }}>Invoice Status</label>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {[
                     { key: 'all' as const, label: 'All Invoices' },
                     { key: 'paid' as const, label: 'Paid Only' },
@@ -327,7 +330,7 @@ export default function Export() {
                 <FileArchive size={16} />
                 <span>
                   {pdfClientId
-                    ? `${clients.find(c => c.id === pdfClientId)?.name} — ${pdfStatusFilter === 'all' ? 'All' : pdfStatusFilter.charAt(0).toUpperCase() + pdfStatusFilter.slice(1)} invoices → ZIP download`
+                    ? `${clients.find(c => String(c.id) === pdfClientId)?.name} — ${pdfStatusFilter === 'all' ? 'All' : pdfStatusFilter.charAt(0).toUpperCase() + pdfStatusFilter.slice(1)} invoices → ZIP download`
                     : 'Select a client to export their invoices'}
                 </span>
               </div>

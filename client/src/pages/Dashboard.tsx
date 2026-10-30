@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getDashboard, type DashboardData, type Invoice, downloadPDF, updateInvoiceStatus  } from '../api';
+import { useIsPhone } from '../hooks/useMediaQuery';
+import type { DashboardData, Invoice, Id } from '../api';
+import { getDashboard, downloadPDF, updateInvoiceStatus, useDataVersion } from '../data';
+import { invoiceLabel } from '../invoiceLabel';
 import { useToast } from '../context/ToastContext';
 import { Banknote, ClipboardList, Wallet, FileText, Edit2, CheckCircle, Download, Receipt } from 'lucide-react';
 
@@ -37,6 +40,8 @@ export default function Dashboard() {
   });
 
   const navigate = useNavigate();
+
+  const isPhone = useIsPhone();
   const { addToast } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -51,9 +56,11 @@ export default function Dashboard() {
     }
   }, [addToast, timeFilter, customStartDate, customEndDate]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Re-read when data changes, including changes synced from other devices
+  const dataVersion = useDataVersion();
+  useEffect(() => { fetchData(); }, [fetchData, dataVersion]);
 
-  const handleMarkPaid = async (id: number) => {
+  const handleMarkPaid = async (id: Id) => {
     try {
       await updateInvoiceStatus(id, 'paid');
       addToast('Invoice marked as paid', 'success');
@@ -82,12 +89,13 @@ export default function Dashboard() {
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Overview of your billing activity</p>
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <select 
-            className="form-select" 
-            value={timeFilter} 
+        <div className="page-header-actions">
+          <select
+            className="form-select"
+            value={timeFilter}
             onChange={(e) => setTimeFilter(e.target.value)}
-            style={{ minWidth: '170px', margin: 0, padding: '10px' }}
+            style={{ width: 'auto', minWidth: '170px', margin: 0, padding: '10px 36px 10px 12px' }}
+            aria-label="Time period"
           >
             <option value="all">All Time</option>
             <option value="month">This Month</option>
@@ -96,21 +104,21 @@ export default function Dashboard() {
             <option value="custom">Custom Date Range</option>
           </select>
           {timeFilter === 'custom' && (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <input 
-                type="date" 
-                className="form-input" 
+            <div className="date-range">
+              <input
+                type="date"
+                className="form-input"
                 value={customStartDate}
                 onChange={(e) => setCustomStartDate(e.target.value)}
-                style={{ padding: '8px 12px', margin: 0, minWidth: '130px' }}
+                aria-label="From date"
               />
               <span style={{ color: 'var(--text-secondary)' }}>to</span>
-              <input 
-                type="date" 
-                className="form-input" 
+              <input
+                type="date"
+                className="form-input"
                 value={customEndDate}
                 onChange={(e) => setCustomEndDate(e.target.value)}
-                style={{ padding: '8px 12px', margin: 0, minWidth: '130px' }}
+                aria-label="To date"
               />
             </div>
           )}
@@ -122,7 +130,7 @@ export default function Dashboard() {
 
       {/* Stats Grid 1 */}
       {(preferences.totalBilled || preferences.totalReceived || preferences.tds || preferences.outstanding) && (
-        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+        <div className="stats-grid">
           {preferences.totalBilled && (
             <div className="stat-card blue">
               <div className="stat-icon"><Wallet size={28} /></div>
@@ -204,7 +212,32 @@ export default function Dashboard() {
             View All →
           </button>
         </div>
-        {data?.recentInvoices && data.recentInvoices.length > 0 ? (
+        {data?.recentInvoices && data.recentInvoices.length > 0 && isPhone ? (
+          <div className="card-list">
+            {data.recentInvoices.map((inv: Invoice) => (
+              <div key={inv.id} className="list-card">
+                <div className="list-card-main" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
+                  <div>
+                    <div className="list-card-title">{invoiceLabel(inv)}</div>
+                    <div className="list-card-subtitle">{inv.client_name}</div>
+                    <div className="list-card-meta">{formatDate(inv.date)}</div>
+                  </div>
+                  <div className="list-card-amount">
+                    <strong>₹{inv.total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                    <span className={`badge ${inv.status}`}>{inv.status}</span>
+                  </div>
+                </div>
+                <div className="list-card-actions">
+                  <span className="spacer" />
+                  <button className="btn-icon btn-icon-green" title="Download PDF" aria-label="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date)}><Download size={18} /></button>
+                  {inv.status !== 'paid' && (
+                    <button className="btn-icon btn-icon-amber" title="Mark Paid" aria-label="Mark paid" onClick={() => handleMarkPaid(inv.id)}><CheckCircle size={18} /></button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : data?.recentInvoices && data.recentInvoices.length > 0 ? (
           <table>
             <thead>
               <tr>
@@ -219,7 +252,7 @@ export default function Dashboard() {
             <tbody>
               {data.recentInvoices.map((inv: Invoice) => (
                 <tr key={inv.id}>
-                  <td style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>{inv.invoice_number}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>{invoiceLabel(inv)}</td>
                   <td>{inv.client_name}</td>
                   <td>{formatDate(inv.date)}</td>
                   <td style={{ fontWeight: 600 }}>₹{inv.total.toFixed(2)}</td>

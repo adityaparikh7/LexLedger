@@ -186,12 +186,13 @@ router.get('/export-pdfs', async (req: Request, res: Response) => {
       launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
     }
     const browser = await puppeteer.launch(launchOptions);
+    const profile = getFirmProfile();
 
     try {
       // Generate PDF for each invoice and append to archive
       for (const invoice of invoices) {
         const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(invoice.id) as any[];
-        const pdfBuffer = await generatePDF(invoice, lineItems, browser);
+        const pdfBuffer = await generatePDF(invoice, lineItems, profile, browser);
         const entryName = buildFeeMemoName(
           invoice.invoice_number,
           invoice.client_name || 'Client',
@@ -427,7 +428,7 @@ router.get('/:id/pdf/preview', async (req: Request, res: Response) => {
     `).get(req.params.id) as any;
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(req.params.id) as any[];
-    const pdfBuffer = await generatePDF(invoice, lineItems);
+    const pdfBuffer = await generatePDF(invoice, lineItems, getFirmProfile());
     const feeMemoName = buildFeeMemoName(
       invoice.invoice_number,
       invoice.client_name || 'Client',
@@ -452,7 +453,7 @@ router.get('/:id/pdf', async (req: Request, res: Response) => {
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(req.params.id) as any[];
     // Generate PDF
-    const pdfBuffer = await generatePDF(invoice, lineItems);
+    const pdfBuffer = await generatePDF(invoice, lineItems, getFirmProfile());
     // Save redundant copy
     const feeMemoName = buildFeeMemoName(
       invoice.invoice_number,
@@ -483,7 +484,7 @@ router.get('/:id/excel', async (req: Request, res: Response) => {
     `).get(req.params.id) as any;
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(req.params.id) as any[];
-    const excelBuffer = await generateExcel(invoice, lineItems);
+    const excelBuffer = await generateExcel(invoice, lineItems, getFirmProfile());
     // Save redundant copy
     const safeInvoiceNumber = invoice.invoice_number.replace(/[\/\\]/g, '-');
     const fileName = `${safeInvoiceNumber}_${Date.now()}.xlsx`;
@@ -511,8 +512,8 @@ router.post('/:id/send', async (req: Request, res: Response) => {
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     if (!invoice.client_email) return res.status(400).json({ error: 'Client has no email address' });
     const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(req.params.id) as any[];
-    const pdfBuffer = await generatePDF(invoice, lineItems);
     const profile = getFirmProfile();
+    const pdfBuffer = await generatePDF(invoice, lineItems, profile);
     const emailClient = profile.email_client || 'mailto';
 
     // Save PDF to temp for the mail client to pick up

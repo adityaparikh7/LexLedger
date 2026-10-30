@@ -1,9 +1,12 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
 import {
-  getFirmProfile, updateFirmProfile, getBackups, createBackupNow, restoreBackup, chooseBackupFolder,
+  getBackups, createBackupNow, restoreBackup, chooseBackupFolder,
   type FirmProfile, type BackupInfo, type BackupFile
 } from '../api';
+import { getFirmProfile, updateFirmProfile } from '../data';
 import { ToastContext } from '../context/ToastContext';
+import { useSession } from '../auth/SessionContext';
+import AccountSection from '../components/AccountSection';
 import { Hand, Landmark, Building, PenTool, Mail, Monitor, Globe, FileText, Info, Save, Loader2, Check, LayoutDashboard, DatabaseBackup, FolderOpen, ArchiveRestore } from 'lucide-react';
 
 const EMPTY_PROFILE: FirmProfile = {
@@ -55,6 +58,8 @@ const defaultDashboardPreferences = {
 };
 
 export default function Settings() {
+  // Backups are a desktop feature; the cloud database has its own
+  const { mode } = useSession();
   const { addToast } = useContext(ToastContext);
   const [profile, setProfile] = useState<FirmProfile>(EMPTY_PROFILE);
   const [loading, setLoading] = useState(true);
@@ -99,7 +104,9 @@ export default function Settings() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { loadBackups(); }, [loadBackups]);
+  useEffect(() => {
+    if (mode === 'desktop') loadBackups();
+  }, [loadBackups, mode]);
 
   useEffect(() => {
     const changed = JSON.stringify(profile) !== JSON.stringify(savedProfile) ||
@@ -602,7 +609,10 @@ export default function Settings() {
             </div>
           </div>
 
+          {mode === 'cloud' && <AccountSection />}
+
           {/* Backups */}
+          {mode === 'desktop' && (
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="settings-section" style={{ marginBottom: 0 }}>
               <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><DatabaseBackup size={20} /> Backups</h3>
@@ -717,6 +727,7 @@ export default function Settings() {
               </div>
             </div>
           </div>
+          )}
 
           {/* About */}
           <div className="card">

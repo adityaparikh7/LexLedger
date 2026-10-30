@@ -1,0 +1,10 @@
+{
+  // Typecheck for the cloud server (built with tsup, which also bundles ../shared)
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".."
+  },
+  "include": ["src/cloud/**/*", "../shared/**/*"],
+  "exclude": ["node_modules", "dist", "dist-cloud"]
+}

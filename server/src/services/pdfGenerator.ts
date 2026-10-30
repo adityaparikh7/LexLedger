@@ -1,8 +1,8 @@
 import puppeteer, { type Browser } from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
-import { getFirmProfile } from '../routes/settings';
 import { amountInWords } from './amountInWords';
+import type { MemoProfile } from './memoProfile';
 
 /** Normalise any stored date string to dd/mm/yyyy */
 function formatDate(raw: string | null | undefined): string {
@@ -38,12 +38,22 @@ function escapeHTML(str: string | null | undefined): string {
     .replace(/'/g, '&#039;');
 }
 
-export async function generatePDF(invoice: any, lineItems: any[], providedBrowser?: Browser): Promise<Buffer> {
+/** Launch headless Chrome. Pass the browser to generatePDF to reuse it across many memos. */
+export function launchBrowser(): Promise<Browser> {
+  const launchOptions: Parameters<typeof puppeteer.launch>[0] = {
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  };
+  // In packaged Electron app (and the cloud image), use the bundled Chrome executable
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  return puppeteer.launch(launchOptions);
+}
+
+export async function generatePDF(invoice: any, lineItems: any[], profile: MemoProfile, providedBrowser?: Browser): Promise<Buffer> {
   // Read and populate the HTML template
   let html = fs.readFileSync(TEMPLATE_PATH, 'utf-8');
-
-  // Get firm profile for dynamic details
-  const profile = getFirmProfile();
 
   // Build firm contact line
   const contactParts: string[] = [];
@@ -127,17 +137,7 @@ export async function generatePDF(invoice: any, lineItems: any[], providedBrowse
     .replace('{{amount_in_words}}', escapeHTML(amountInWords(invoice.total ?? 0)));
 
   // Launch Puppeteer and render HTML to PDF
-  const launchOptions: Parameters<typeof puppeteer.launch>[0] = {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  };
-
-  // In packaged Electron app, use the bundled Chrome executable
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
-
-  const browser = providedBrowser || await puppeteer.launch(launchOptions);
+  const browser = providedBrowser || await launchBrowser();
   let page;
   try {
     page = await browser.newPage();
