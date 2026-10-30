@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { getFinancialYear } from './dates';
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'legalbill.db');
+export const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'legalbill.db');
 
 // Ensure data directory exists
 const dataDir = path.dirname(DB_PATH);
@@ -166,6 +167,20 @@ export function initDatabase(): void {
     // Column already exists — ignore
   }
 
+  // Migration: add backup settings to firm_profile
+  const backupColumns = [
+    { name: 'backup_enabled', type: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'backup_dir', type: "TEXT NOT NULL DEFAULT ''" },
+    { name: 'backup_keep', type: 'INTEGER NOT NULL DEFAULT 30' },
+  ];
+  for (const col of backupColumns) {
+    try {
+      db.exec(`ALTER TABLE firm_profile ADD COLUMN ${col.name} ${col.type}`);
+    } catch (_) {
+      // Column already exists — ignore
+    }
+  }
+
   // Migration: rebuild invoices table to change CHECK constraint from 'overdue' to 'unpaid'
   // SQLite does not support ALTER TABLE to modify CHECK constraints; a full table rebuild is required.
   // IMPORTANT: Only run this migration if the old 'overdue' value is actually in the CHECK constraint.
@@ -226,21 +241,9 @@ export function initDatabase(): void {
 }
 
 export function generateInvoiceNumber(invoiceDateStr?: string): string {
-  const now = invoiceDateStr ? new Date(invoiceDateStr) : new Date();
-  
-  // Financial year logic: April 1 to March 31
-  let startYear = now.getFullYear();
-  let endYear = startYear + 1;
-  
-  // If month is Jan, Feb, or Mar (0, 1, 2), it's part of previous year's financial year
-  if (now.getMonth() < 3) {
-    startYear -= 1;
-    endYear -= 1;
-  }
-  
-  // Format as YYYY-YY (e.g., 2025-26)
-  const fyString = `${startYear}-${String(endYear).slice(-2)}`;
-  
+  // Financial year (April 1 to March 31) formatted as YYYY-YY, e.g. 2025-26
+  const fyString = getFinancialYear(invoiceDateStr ?? new Date()).label;
+
   // Look for invoices in this financial year
   const searchPattern = `%/${fyString}`;
 

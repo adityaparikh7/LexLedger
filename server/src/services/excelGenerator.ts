@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { getFirmProfile } from '../routes/settings';
+import { amountInWords } from './amountInWords';
 
 interface Invoice {
   invoice_number: string;
@@ -170,6 +171,9 @@ export async function generateExcel(invoice: Invoice, lineItems: LineItem[]): Pr
   });
   totalRow.getCell(3).numFmt = '#,##0';
   totalRow.getCell(3).alignment = { horizontal: 'right' };
+
+  const rWords = addRow([`(${amountInWords(invoice.total)})`, null, null], { italic: true }, { horizontal: 'right' });
+  merge(rWords.number);
 
   sheet.addRow([]);
 

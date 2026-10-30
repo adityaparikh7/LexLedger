@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import path from 'path';
 import { fork, ChildProcess } from 'child_process';
 import fs from 'fs';
@@ -212,6 +212,19 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// Native folder picker for the renderer (used to choose the backup folder)
+ipcMain.handle('dialog:select-folder', async (_event, defaultPath?: string) => {
+  const options: Electron.OpenDialogOptions = {
+    title: 'Choose a folder for LexLedger backups',
+    properties: ['openDirectory', 'createDirectory'],
+    ...(typeof defaultPath === 'string' && defaultPath ? { defaultPath } : {}),
+  };
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
+});
 
 // App lifecycle
 app.whenReady().then(async () => {

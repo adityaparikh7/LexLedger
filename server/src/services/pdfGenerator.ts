@@ -1,7 +1,8 @@
-import puppeteer from 'puppeteer';
+import puppeteer, { type Browser } from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
 import { getFirmProfile } from '../routes/settings';
+import { amountInWords } from './amountInWords';
 
 /** Normalise any stored date string to dd/mm/yyyy */
 function formatDate(raw: string | null | undefined): string {
@@ -37,7 +38,7 @@ function escapeHTML(str: string | null | undefined): string {
     .replace(/'/g, '&#039;');
 }
 
-export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffer> {
+export async function generatePDF(invoice: any, lineItems: any[], providedBrowser?: Browser): Promise<Buffer> {
   // Read and populate the HTML template
   let html = fs.readFileSync(TEMPLATE_PATH, 'utf-8');
 
@@ -122,7 +123,8 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
     .replace('{{date}}', formatDate(invoice.date)) // Already formatted date, safe
     .replace('{{case_details}}', caseDetailsHtml) // Already escaped in its parts
     .replace('{{line_items}}', lineItemsHtml) // Already escaped in its parts
-    .replace('{{total}}', formatINR(invoice.total ?? 0)); // Formatted number, safe
+    .replace('{{total}}', formatINR(invoice.total ?? 0)) // Formatted number, safe
+    .replace('{{amount_in_words}}', escapeHTML(amountInWords(invoice.total ?? 0)));
 
   // Launch Puppeteer and render HTML to PDF
   const launchOptions: Parameters<typeof puppeteer.launch>[0] = {
@@ -135,10 +137,10 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
     launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
   }
 
-  const browser = await puppeteer.launch(launchOptions);
-
+  const browser = providedBrowser || await puppeteer.launch(launchOptions);
+  let page;
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
 
     const pdfBuffer = await page.pdf({
@@ -149,7 +151,12 @@ export async function generatePDF(invoice: any, lineItems: any[]): Promise<Buffe
 
     return Buffer.from(pdfBuffer);
   } finally {
-    await browser.close();
+    if (page) {
+      await page.close().catch(console.error);
+    }
+    if (!providedBrowser) {
+      await browser.close().catch(console.error);
+    }
   }
 }
 

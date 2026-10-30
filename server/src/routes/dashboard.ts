@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import db from '../db';
+import { getFinancialYear, toLocalDateString } from '../dates';
 
 const router = Router();
 
@@ -26,23 +27,25 @@ router.get('/', (req: Request, res: Response) => {
           queryParams.push(endDate as string);
         }
       } else {
+        let endDateStr = '';
         if (timeFilter === 'month') {
-          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          startDateStr = startOfMonth.toISOString().split('T')[0];
+          startDateStr = toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+          endDateStr = toLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
         } else if (timeFilter === 'quarter') {
+          // Calendar quarters line up with Indian FY quarters (Apr-Jun, Jul-Sep, Oct-Dec, Jan-Mar)
           const quarterMonth = Math.floor(now.getMonth() / 3) * 3;
-          const startOfQuarter = new Date(now.getFullYear(), quarterMonth, 1);
-          startDateStr = startOfQuarter.toISOString().split('T')[0];
+          startDateStr = toLocalDateString(new Date(now.getFullYear(), quarterMonth, 1));
+          endDateStr = toLocalDateString(new Date(now.getFullYear(), quarterMonth + 3, 0));
         } else if (timeFilter === 'year') {
-          // Indian Financial Year starts April 1st
-          const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-          const startOfFY = new Date(startYear, 3, 1);
-          startDateStr = startOfFY.toISOString().split('T')[0];
+          // Indian Financial Year: April 1st to March 31st
+          const fy = getFinancialYear(now);
+          startDateStr = fy.start;
+          endDateStr = fy.end;
         }
 
-        if (startDateStr) {
-          dateCondition = 'WHERE date >= ?';
-          queryParams.push(startDateStr);
+        if (startDateStr && endDateStr) {
+          dateCondition = 'WHERE date >= ? AND date <= ?';
+          queryParams.push(startDateStr, endDateStr);
         }
       }
     }
@@ -51,9 +54,18 @@ router.get('/', (req: Request, res: Response) => {
       SELECT
         COUNT(*) as total_invoices,
         COALESCE(SUM(CASE WHEN status != 'cancelled' THEN total ELSE 0 END), 0) as total_billed,
-        COALESCE(SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END), 0) as total_paid,
-        COALESCE(SUM(CASE WHEN status IN ('sent', 'draft', 'unpaid') THEN total ELSE 0 END), 0) as total_outstanding,
-        COALESCE(SUM(CASE WHEN status = 'unpaid' THEN total ELSE 0 END), 0) as total_unpaid,
+        -- Money actually received. A memo marked paid with no payment recorded counts as fully received.
+        COALESCE(SUM(CASE
+          WHEN status = 'cancelled' THEN 0
+          WHEN status = 'paid' AND COALESCE(amount_received, 0) + COALESCE(tds_amount, 0) = 0 THEN total
+          ELSE COALESCE(amount_received, 0)
+        END), 0) as total_received,
+        COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(tds_amount, 0) ELSE 0 END), 0) as total_tds,
+        -- Remaining balance after part-payments and TDS
+        COALESCE(SUM(CASE WHEN status IN ('sent', 'draft', 'unpaid')
+          THEN MAX(total - COALESCE(amount_received, 0) - COALESCE(tds_amount, 0), 0) ELSE 0 END), 0) as total_outstanding,
+        COALESCE(SUM(CASE WHEN status = 'unpaid'
+          THEN MAX(total - COALESCE(amount_received, 0) - COALESCE(tds_amount, 0), 0) ELSE 0 END), 0) as total_unpaid,
         COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_count,
         COUNT(CASE WHEN status = 'unpaid' THEN 1 END) as unpaid_count,
         COUNT(CASE WHEN status = 'draft' THEN 1 END) as draft_count,

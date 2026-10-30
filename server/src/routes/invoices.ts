@@ -5,9 +5,11 @@ import { generateExcel } from '../services/excelGenerator';
 import { generateExportExcel } from '../services/exportGenerator';
 import { composeEmail, saveTempPDF, type EmailClient } from '../services/mailComposer';
 import { getFirmProfile } from '../routes/settings';
+import { toLocalDateString } from '../dates';
 import archiver from 'archiver';
 import path from 'path';
 import fs from 'fs';
+import puppeteer from 'puppeteer';
 const router = Router();
 const COPIES_DIR = process.env.COPIES_PATH || path.join(__dirname, '..', '..', '..', 'copies');
 if (!fs.existsSync(COPIES_DIR)) {
@@ -175,16 +177,30 @@ router.get('/export-pdfs', async (req: Request, res: Response) => {
     });
     archive.pipe(res);
 
-    // Generate PDF for each invoice and append to archive
-    for (const invoice of invoices) {
-      const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(invoice.id) as any[];
-      const pdfBuffer = await generatePDF(invoice, lineItems);
-      const entryName = buildFeeMemoName(
-        invoice.invoice_number,
-        invoice.client_name || 'Client',
-        invoice.date || ''
-      );
-      archive.append(pdfBuffer, { name: `${entryName}.pdf` });
+    // Launch a single browser for the entire batch to improve performance
+    const launchOptions: Parameters<typeof puppeteer.launch>[0] = {
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    const browser = await puppeteer.launch(launchOptions);
+
+    try {
+      // Generate PDF for each invoice and append to archive
+      for (const invoice of invoices) {
+        const lineItems = db.prepare('SELECT * FROM line_items WHERE invoice_id = ?').all(invoice.id) as any[];
+        const pdfBuffer = await generatePDF(invoice, lineItems, browser);
+        const entryName = buildFeeMemoName(
+          invoice.invoice_number,
+          invoice.client_name || 'Client',
+          invoice.date || ''
+        );
+        archive.append(pdfBuffer, { name: `${entryName}.pdf` });
+      }
+    } finally {
+      await browser.close().catch(console.error);
     }
 
     await archive.finalize();
@@ -221,8 +237,7 @@ router.post('/', (req: Request, res: Response) => {
     const { client_id, date, date_paid, notes, tax_rate, line_items, case_name, case_party1_type, case_plaintiff, case_party2_type, case_defendant, amount_received, tds_amount, payments } = req.body;
     if (!client_id) return res.status(400).json({ error: 'Client is required' });
     if (!line_items || line_items.length === 0) return res.status(400).json({ error: 'At least one service/line item is required' });
-    const invoiceDate = date || new Date().toISOString().split('T')[0];
-    const invoiceNumber = generateInvoiceNumber(invoiceDate);
+    const invoiceDate = date || toLocalDateString(new Date());
     const taxRate = tax_rate || 0;
     // Calculate totals
     let subtotal = 0;
@@ -242,6 +257,7 @@ router.post('/', (req: Request, res: Response) => {
       VALUES (?, ?, ?, ?, ?)
     `);
     const transaction = db.transaction(() => {
+      const invoiceNumber = generateInvoiceNumber(invoiceDate);
       const result = insertInvoice.run(
         invoiceNumber, client_id, invoiceDate, date_paid || null, notes || null,
         case_name || null, case_party1_type || null, case_plaintiff || null,
@@ -534,11 +550,26 @@ router.post('/:id/remind', async (req: Request, res: Response) => {
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     if (!invoice.client_email) return res.status(400).json({ error: 'Client has no email address' });
 
+    // Quote the remaining balance, not the full memo total, once part-payments or TDS are recorded
+    const received = invoice.amount_received || 0;
+    const tds = invoice.tds_amount || 0;
+    const balance = invoice.total - received - tds;
+    if (balance <= 0.01) return res.status(400).json({ error: 'This memo has no outstanding balance' });
+
     const profile = getFirmProfile();
     const emailClient = profile.email_client || 'mailto';
 
-    const subject = `Payment Reminder: Fee Memo ${invoice.invoice_number} - ₹${invoice.total.toFixed(2)}`;
-    const body = `Dear ${invoice.client_name},\n\nI request you to kindly process payment of my pending fee memo.\n\nThe details of the pending fee memo are set out below:\n\nFee Memo Number: ${invoice.invoice_number}\nOriginal Date: ${invoice.date}\nAmount Due: ₹${invoice.total.toFixed(2)}\n\nPlease arrange payment at your earliest convenience. If you have already made the payment, please provide the payment details for updating my record.`;
+    const details = [
+      `Fee Memo Number: ${invoice.invoice_number}`,
+      `Original Date: ${invoice.date}`,
+    ];
+    if (received > 0 || tds > 0) details.push(`Memo Amount: ₹${invoice.total.toFixed(2)}`);
+    if (received > 0) details.push(`Received: ₹${received.toFixed(2)}`);
+    if (tds > 0) details.push(`TDS Deducted: ₹${tds.toFixed(2)}`);
+    details.push(`Amount Due: ₹${balance.toFixed(2)}`);
+
+    const subject = `Payment Reminder: Fee Memo ${invoice.invoice_number} - ₹${balance.toFixed(2)}`;
+    const body = `Dear ${invoice.client_name},\n\nI request you to kindly process payment of my pending fee memo.\n\nThe details of the pending fee memo are set out below:\n\n${details.join('\n')}\n\nPlease arrange payment at your earliest convenience. If you have already made the payment, please provide the payment details for updating my record.`;
 
     const result = await composeEmail({
       to: invoice.client_email,

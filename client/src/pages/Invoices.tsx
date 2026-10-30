@@ -7,6 +7,7 @@ import {
   type Invoice, type Payment
 } from '../api';
 import { useToast } from '../context/ToastContext';
+import { todayLocal } from '../dates';
 import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, X, Loader2, Check, FileDown, Eye, CircleEllipsis } from 'lucide-react';
 
 interface FormPayment {
@@ -90,7 +91,7 @@ export default function Invoices() {
           
           if (balance > 0.01) {
             entries.push({
-              date: new Date().toISOString().split('T')[0],
+              date: todayLocal(),
               amount_received: String(balance),
               tds_amount: '0'
             });
@@ -98,7 +99,7 @@ export default function Invoices() {
           setPaymentEntries(entries);
         } else {
           setPaymentEntries([{
-            date: new Date().toISOString().split('T')[0],
+            date: todayLocal(),
             amount_received: String(fullInv.total),
             tds_amount: '0',
           }]);
@@ -119,7 +120,7 @@ export default function Invoices() {
 
   const addPaymentEntry = () => {
     setPaymentEntries([...paymentEntries, {
-      date: new Date().toISOString().split('T')[0],
+      date: todayLocal(),
       amount_received: '',
       tds_amount: '',
     }]);

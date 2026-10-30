@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getDashboard, type DashboardData, type Invoice, downloadPDF, updateInvoiceStatus  } from '../api';
 import { useToast } from '../context/ToastContext';
-import { Banknote, ClipboardList, Wallet, FileText, Edit2, CheckCircle, Download } from 'lucide-react';
+import { Banknote, ClipboardList, Wallet, FileText, Edit2, CheckCircle, Download, Receipt } from 'lucide-react';
 
 const defaultPreferences = {
   totalBilled: true,
   totalReceived: true,
+  tds: true,
   outstanding: true,
   clients: true,
   totalInvoices: true,
@@ -120,7 +121,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid 1 */}
-      {(preferences.totalBilled || preferences.totalReceived || preferences.outstanding) && (
+      {(preferences.totalBilled || preferences.totalReceived || preferences.tds || preferences.outstanding) && (
         <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
           {preferences.totalBilled && (
             <div className="stat-card blue">
@@ -132,8 +133,15 @@ export default function Dashboard() {
           {preferences.totalReceived && (
             <div className="stat-card green">
               <div className="stat-icon"><Banknote size={28} /></div>
-              <div className="stat-value">₹{stats?.total_paid?.toLocaleString('en-IN') || '0'}</div>
+              <div className="stat-value">₹{stats?.total_received?.toLocaleString('en-IN') || '0'}</div>
               <div className="stat-label">Total Received</div>
+            </div>
+          )}
+          {preferences.tds && (
+            <div className="stat-card amber">
+              <div className="stat-icon"><Receipt size={28} /></div>
+              <div className="stat-value">₹{stats?.total_tds?.toLocaleString('en-IN') || '0'}</div>
+              <div className="stat-label">TDS Deducted</div>
             </div>
           )}
           {preferences.outstanding && (

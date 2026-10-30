@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import db from '../db';
 
 const router = Router();
@@ -20,6 +22,9 @@ export interface FirmProfile {
   smtp_user: string;
   smtp_pass: string;
   email_client: 'apple_mail' | 'outlook' | 'gmail_web' | 'outlook_web' | 'mailto';
+  backup_enabled: number;
+  backup_dir: string;
+  backup_keep: number;
   updated_at: string;
 }
 
@@ -45,6 +50,9 @@ router.get('/firm-profile', (_req: Request, res: Response) => {
         smtp_user: '',
         smtp_pass: '',
         email_client: 'mailto',
+        backup_enabled: 1,
+        backup_dir: '',
+        backup_keep: 30,
       });
     }
     // Graceful migration: if stored value is 'smtp', return 'mailto' instead
@@ -82,7 +90,25 @@ router.put('/firm-profile', (req: Request, res: Response) => {
       smtp_user,
       smtp_pass,
       email_client,
+      backup_enabled,
+      backup_dir,
+      backup_keep,
     } = req.body;
+
+    // A custom backup folder must be an absolute path we can write to (created if missing)
+    const finalBackupDir = typeof backup_dir === 'string' ? backup_dir.trim() : '';
+    if (finalBackupDir) {
+      if (!path.isAbsolute(finalBackupDir)) {
+        return res.status(400).json({ error: 'Backup folder must be a full path, e.g. /Users/you/Backups' });
+      }
+      try {
+        fs.mkdirSync(finalBackupDir, { recursive: true });
+        fs.accessSync(finalBackupDir, fs.constants.W_OK);
+      } catch (_) {
+        return res.status(400).json({ error: `Backup folder isn't writable: ${finalBackupDir}` });
+      }
+    }
+    const finalBackupKeep = Math.max(1, Math.floor(Number(backup_keep) || 30));
 
     // Only update password if it's not the masked value
     const currentProfile = getFirmProfile();
@@ -108,6 +134,9 @@ router.put('/firm-profile', (req: Request, res: Response) => {
         smtp_user = ?,
         smtp_pass = ?,
         email_client = ?,
+        backup_enabled = ?,
+        backup_dir = ?,
+        backup_keep = ?,
         updated_at = datetime('now')
       WHERE id = 1
     `).run(
@@ -126,7 +155,10 @@ router.put('/firm-profile', (req: Request, res: Response) => {
       smtp_port ?? 587,
       smtp_user ?? '',
       finalSmtpPass ?? '',
-      email_client ?? 'mailto'
+      email_client ?? 'mailto',
+      (backup_enabled ?? 1) ? 1 : 0,
+      finalBackupDir,
+      finalBackupKeep
     );
 
     const updated = db.prepare('SELECT * FROM firm_profile WHERE id = 1').get() as FirmProfile;
@@ -161,6 +193,9 @@ export function getFirmProfile(): FirmProfile {
       smtp_user: '',
       smtp_pass: '',
       email_client: 'mailto',
+      backup_enabled: 1,
+      backup_dir: '',
+      backup_keep: 30,
       updated_at: '',
     };
   }
