@@ -1,21 +1,37 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { getDashboard, type DashboardData, type Invoice, downloadPDF, updateInvoiceStatus  } from '../api';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { getDashboard, type DashboardData, downloadPDF, updateInvoiceStatus } from '../api';
 import { useToast } from '../context/ToastContext';
-import { Banknote, ClipboardList, Wallet, FileText, Edit2, CheckCircle, Download, Receipt } from 'lucide-react';
+import { Banknote, ClipboardList, Wallet, FileText, Pencil, CircleCheck, Download, Receipt, Users, ArrowRight, SlidersHorizontal } from 'lucide-react';
+import { formatDate, formatINR, financialYearLabel, plural } from '../format';
+import { CardHeader, EmptyState, InvoiceCard, Loading, PageHeader, StatusBadge } from '../components/ui';
+import { loadDashboardPreferences } from '../dashboardPrefs';
 
-const defaultPreferences = {
-  totalBilled: true,
-  totalReceived: true,
-  tds: true,
-  outstanding: true,
-  clients: true,
-  totalInvoices: true,
-  paid: true,
-  unpaid: true,
-  sent: true,
-  drafts: true
+const PERIOD_LABELS: Record<string, string> = {
+  all: 'All time',
+  month: 'This month',
+  quarter: 'This quarter',
+  year: `FY ${financialYearLabel()}`,
 };
+
+function KpiCard({ label, shortLabel, value, caption, icon, accent }: {
+  label: string; shortLabel?: string; value: string; caption: string; icon: ReactNode; accent?: boolean;
+}) {
+  return (
+    <div className="kpi-card">
+      <div className="kpi-top">
+        <div className={`icon-chip lg${accent ? ' accent' : ''}`}>{icon}</div>
+        <span className="kpi-label">
+          {shortLabel ? <><span className="hide-mobile">{label}</span><span className="show-mobile">{shortLabel}</span></> : label}
+        </span>
+      </div>
+      <div className="kpi-body">
+        <span className="kpi-value">{value}</span>
+        <span className="kpi-caption">{caption}</span>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -23,18 +39,8 @@ export default function Dashboard() {
   const [timeFilter, setTimeFilter] = useState('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  
-  const [preferences] = useState(() => {
-    const saved = localStorage.getItem('dashboardPreferences');
-    if (saved) {
-      try {
-        return { ...defaultPreferences, ...JSON.parse(saved) };
-      } catch (e) {
-        return defaultPreferences;
-      }
-    }
-    return defaultPreferences;
-  });
+
+  const [preferences] = useState(loadDashboardPreferences);
 
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -63,188 +69,186 @@ export default function Dashboard() {
     }
   };
 
-  if (loading && !data) {
-    return <div className="loading-center"><div className="spinner"></div></div>;
-  }
+  if (loading && !data) return <Loading />;
 
   const stats = data?.stats;
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return '—';
-    const [year, month, day] = dateStr.split('T')[0].split('-');
-    if (year && month && day) return `${day}/${month}/${year}`;
-    return dateStr;
-  };
+  // The server's outstanding total includes drafts, so count them too
+  const openCount = (stats?.sent_count || 0) + (stats?.unpaid_count || 0) + (stats?.draft_count || 0);
+  const periodLabel = timeFilter === 'custom'
+    ? (customStartDate && customEndDate ? `${formatDate(customStartDate)} – ${formatDate(customEndDate)}` : 'Custom range')
+    : PERIOD_LABELS[timeFilter];
+
+  const segments = [
+    ['draft', 'Draft', stats?.draft_count || 0],
+    ['sent', 'Sent', stats?.sent_count || 0],
+    ['unpaid', 'Unpaid', stats?.unpaid_count || 0],
+    ['paid', 'Paid', stats?.paid_count || 0],
+  ] as const;
+  const statusTotal = segments.reduce((sum, s) => sum + s[2], 0);
+
+  const countCards = ([
+    ['clients', 'Clients', data?.totalClients || 0, null, '/clients'],
+    ['totalInvoices', 'Total invoices', stats?.total_invoices || 0, null, '/invoices'],
+    ['paid', 'Paid', stats?.paid_count || 0, 'paid', '/invoices'],
+    ['unpaid', 'Unpaid', stats?.unpaid_count || 0, 'unpaid', '/invoices'],
+    ['sent', 'Sent', stats?.sent_count || 0, 'sent', '/invoices'],
+    ['drafts', 'Drafts', stats?.draft_count || 0, 'draft', '/invoices'],
+  ] as const).filter(([key]) => preferences[key]);
+  const showKpis = preferences.totalBilled || preferences.totalReceived || preferences.tds || preferences.outstanding;
+  const nothingShown = !showKpis && countCards.length === 0 && !preferences.statusOverview && !preferences.recentInvoices;
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Overview of your billing activity</p>
-        </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <select 
-            className="form-select" 
-            value={timeFilter} 
-            onChange={(e) => setTimeFilter(e.target.value)}
-            style={{ minWidth: '170px', margin: 0, padding: '10px' }}
-          >
-            <option value="all">All Time</option>
-            <option value="month">This Month</option>
-            <option value="quarter">This Quarter</option>
-            <option value="year">This Financial Year</option>
-            <option value="custom">Custom Date Range</option>
+    <div className="page">
+      <PageHeader
+        title="Dashboard"
+        subtitle={`Overview of your billing activity · ${periodLabel}`}
+        actions={<>
+          <select className="input input-sm" value={timeFilter} onChange={e => setTimeFilter(e.target.value)}
+            aria-label="Period" style={{ width: 220 }}>
+            <option value="all">All time</option>
+            <option value="month">This month</option>
+            <option value="quarter">This quarter</option>
+            <option value="year">This financial year</option>
+            <option value="custom">Custom date range</option>
           </select>
-          {timeFilter === 'custom' && (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <input 
-                type="date" 
-                className="form-input" 
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                style={{ padding: '8px 12px', margin: 0, minWidth: '130px' }}
-              />
-              <span style={{ color: 'var(--text-secondary)' }}>to</span>
-              <input 
-                type="date" 
-                className="form-input" 
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                style={{ padding: '8px 12px', margin: 0, minWidth: '130px' }}
-              />
-            </div>
-          )}
-          <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
-            + New Invoice
-          </button>
-        </div>
-      </div>
+          {timeFilter === 'custom' && <>
+            <input type="date" className="input input-sm" value={customStartDate} aria-label="Start date"
+              onChange={e => setCustomStartDate(e.target.value)} style={{ width: 160 }} />
+            <span className="text-muted hide-mobile">to</span>
+            <input type="date" className="input input-sm" value={customEndDate} aria-label="End date"
+              onChange={e => setCustomEndDate(e.target.value)} style={{ width: 160 }} />
+          </>}
+        </>}
+      />
 
-      {/* Stats Grid 1 */}
-      {(preferences.totalBilled || preferences.totalReceived || preferences.tds || preferences.outstanding) && (
-        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+      {showKpis && (
+        <div className="kpi-grid">
           {preferences.totalBilled && (
-            <div className="stat-card blue">
-              <div className="stat-icon"><Wallet size={28} /></div>
-              <div className="stat-value">₹{stats?.total_billed?.toLocaleString('en-IN') || '0'}</div>
-              <div className="stat-label">Total Billed</div>
-            </div>
+            <KpiCard label="Total billed" shortLabel="Billed" value={formatINR(stats?.total_billed, false)} icon={<Wallet size={20} />}
+              caption={plural(stats?.total_invoices || 0, 'invoice')} />
           )}
           {preferences.totalReceived && (
-            <div className="stat-card green">
-              <div className="stat-icon"><Banknote size={28} /></div>
-              <div className="stat-value">₹{stats?.total_received?.toLocaleString('en-IN') || '0'}</div>
-              <div className="stat-label">Total Received</div>
-            </div>
+            <KpiCard label="Total received" shortLabel="Received" value={formatINR(stats?.total_received, false)} icon={<Banknote size={20} />}
+              caption={`${plural(stats?.paid_count || 0, 'invoice')} fully paid`} />
           )}
           {preferences.tds && (
-            <div className="stat-card amber">
-              <div className="stat-icon"><Receipt size={28} /></div>
-              <div className="stat-value">₹{stats?.total_tds?.toLocaleString('en-IN') || '0'}</div>
-              <div className="stat-label">TDS Deducted</div>
-            </div>
+            <KpiCard label="TDS deducted" shortLabel="TDS" value={formatINR(stats?.total_tds, false)} icon={<Receipt size={20} />}
+              caption="Withheld at source by clients" />
           )}
           {preferences.outstanding && (
-            <div className="stat-card amber">
-              <div className="stat-icon"><ClipboardList size={28} /></div>
-              <div className="stat-value">₹{stats?.total_outstanding?.toLocaleString('en-IN') || '0'}</div>
-              <div className="stat-label">Outstanding</div>
-            </div>
+            <KpiCard label="Outstanding" value={formatINR(stats?.total_outstanding, false)} icon={<ClipboardList size={20} />} accent
+              caption={`Across ${plural(openCount, 'open invoice')}`} />
           )}
         </div>
       )}
 
-      {/* Stats Grid 2 */}
-      {(preferences.clients || preferences.totalInvoices || preferences.paid || preferences.unpaid || preferences.sent || preferences.drafts) && (
-        <div className="stats-grid" style={{ marginBottom: 32 }}>
-          {preferences.clients && (
-            <div className="stat-card green">
-              <div className="stat-value">{data?.totalClients || 0}</div>
-              <div className="stat-label">Clients</div>
-            </div>
-          )}
-          {preferences.totalInvoices && (
-            <div className="stat-card blue">
-              <div className="stat-value">{stats?.total_invoices || 0}</div>
-              <div className="stat-label">Total Invoices</div>
-            </div>
-          )}
-          {preferences.paid && (
-            <div className="stat-card green">
-              <div className="stat-value">{stats?.paid_count || 0}</div>
-              <div className="stat-label">Paid Invoices</div>
-            </div>
-          )}
-          {preferences.unpaid && (
-            <div className="stat-card red">
-              <div className="stat-value">{stats?.unpaid_count || 0}</div>
-              <div className="stat-label">Unpaid Invoices</div>
-            </div>
-          )}
-          {preferences.sent && (
-            <div className="stat-card blue">
-              <div className="stat-value">{stats?.sent_count || 0}</div>
-              <div className="stat-label">Sent</div>
-            </div>
-          )}
-          {preferences.drafts && (
-            <div className="stat-card amber">
-              <div className="stat-value">{stats?.draft_count || 0}</div>
-              <div className="stat-label">Drafts</div>
-            </div>
-          )}
+      {countCards.length > 0 && (
+        <div className="count-grid">
+          {countCards.map(([key, label, value, status, to]) => (
+            <Link key={key} to={to} className="count-card">
+              <span className="count-label">
+                {status ? <span className={`legend-dot dot-${status}`} /> : key === 'clients' ? <Users size={18} /> : <FileText size={18} />}
+                {label}
+              </span>
+              <span className="count-value">{value}</span>
+            </Link>
+          ))}
         </div>
       )}
 
-      {/* Recent Invoices */}
-      <div className="table-container">
-        <div className="table-header">
-          <h3 className="table-title">Recent Invoices</h3>
-          <button className="btn btn-outline btn-sm" onClick={() => navigate('/invoices')}>
-            View All →
-          </button>
-        </div>
-        {data?.recentInvoices && data.recentInvoices.length > 0 ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Invoice #</th>
-                <th>Client</th>
-                <th>Date</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recentInvoices.map((inv: Invoice) => (
-                <tr key={inv.id}>
-                  <td style={{ fontWeight: 600, color: 'var(--accent-blue)' }}>{inv.invoice_number}</td>
-                  <td>{inv.client_name}</td>
-                  <td>{formatDate(inv.date)}</td>
-                  <td style={{ fontWeight: 600 }}>₹{inv.total.toFixed(2)}</td>
-                  <td><span className={`badge ${inv.status}`}>{inv.status}</span></td>
-                  <td>
-                    <div className="btn-group">
-                      <button className="btn-icon btn-icon-blue" title="Edit" onClick={() => navigate(`/invoices/${inv.id}/edit`)}><Edit2 size={18} /></button>
-                      <button className="btn-icon btn-icon-green" title="Download PDF" onClick={() => downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date)}><Download size={18} /></button>
-                      {inv.status !== 'paid' && (
-                        <button className="btn-icon btn-icon-amber" title="Mark Paid" onClick={() => handleMarkPaid(inv.id)}><CheckCircle size={18} /></button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="empty-state">
-            <div className="empty-icon"><FileText size={48} /></div>
-            <div className="empty-text">No invoices yet</div>
-            <div className="empty-subtext">Create your first invoice to get started</div>
+      {preferences.statusOverview && (
+        <section className="card">
+          <CardHeader
+            title="Invoice status"
+            subtitle={plural(stats?.total_invoices || 0, 'invoice')}
+            right={
+              <Link to="/clients" className="legend-item" style={{ textDecoration: 'none', fontWeight: 500 }}>
+                <Users size={20} className="text-muted" /> {plural(data?.totalClients || 0, 'client')}
+              </Link>
+            }
+          />
+          <div className="status-bar" aria-hidden="true">
+            {statusTotal === 0
+              ? <span className="empty" />
+              : segments.filter(s => s[2] > 0).map(([key, , count]) => <span key={key} className={`seg-${key}`} style={{ flexGrow: count }} />)}
           </div>
-        )}
-      </div>
+          <div className="legend">
+            {segments.map(([key, label, count]) => (
+              <span key={key} className="legend-item">
+                <span className={`legend-dot dot-${key}`} /> {label} <strong>{count}</strong>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {nothingShown && (
+        <section className="card">
+          <EmptyState icon={<SlidersHorizontal size={24} />} title="All dashboard cards are hidden"
+            text="Choose the cards you want to see in Settings → Dashboard layout."
+            action={<Link to="/settings" className="btn btn-secondary">Open settings</Link>} />
+        </section>
+      )}
+
+      {preferences.recentInvoices && (
+        <section className="table-card list-card">
+          <div className="table-card-header">
+            <h2 className="card-title">Recent invoices</h2>
+            <Link to="/invoices" className="btn-link btn" style={{ gap: 6 }}>View all <ArrowRight size={18} /></Link>
+          </div>
+          {data?.recentInvoices && data.recentInvoices.length > 0 ? (
+            <>
+              <div className="table-scroll hide-mobile">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Invoice</th>
+                      <th>Client &amp; matter</th>
+                      <th>Date</th>
+                      <th className="right">Amount</th>
+                      <th>Status</th>
+                      <th className="actions-col">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.recentInvoices.map(inv => (
+                      <tr key={inv.id}>
+                        <td><button type="button" className="invoice-link" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>{inv.invoice_number}</button></td>
+                        <td>
+                          <div className="cell-stack">
+                            <span className="cell-title">{inv.client_name}</span>
+                            {inv.case_name && <span className="cell-sub">{inv.case_name}</span>}
+                          </div>
+                        </td>
+                        <td className="nowrap text-secondary">{formatDate(inv.date)}</td>
+                        <td className="right cell-num">{formatINR(inv.total)}</td>
+                        <td><StatusBadge status={inv.status} /></td>
+                        <td className="actions-col">
+                          <div className="row-actions">
+                            <button className="icon-btn" title="Edit" aria-label={`Edit ${inv.invoice_number}`} onClick={() => navigate(`/invoices/${inv.id}/edit`)}><Pencil size={20} /></button>
+                            <button className="icon-btn" title="Download PDF" aria-label={`Download PDF of ${inv.invoice_number}`} onClick={() => downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date)}><Download size={20} /></button>
+                            {inv.status !== 'paid' && inv.status !== 'cancelled' && (
+                              <button className="icon-btn" title="Mark as paid" aria-label={`Mark ${inv.invoice_number} as paid`} onClick={() => handleMarkPaid(inv.id)}><CircleCheck size={20} /></button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="invoice-cards show-mobile">
+                {data.recentInvoices.slice(0, 5).map(inv => (
+                  <InvoiceCard key={inv.id} invoice={inv} onOpen={() => navigate(`/invoices/${inv.id}/edit`)} />
+                ))}
+              </div>
+            </>
+          ) : (
+            <EmptyState icon={<FileText size={24} />} title="No invoices yet" text="Create your first invoice to get started."
+              action={<Link to="/invoices/new" className="btn btn-primary">Create invoice</Link>} />
+          )}
+        </section>
+      )}
     </div>
   );
 }

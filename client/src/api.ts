@@ -221,12 +221,29 @@ export const downloadExcel = async (id: number, invoiceNumber: string) => {
   a.click();
   URL.revokeObjectURL(url);
 };
-export const downloadExportExcel = async (startDate: string, endDate: string) => {
-  const blob = await request(`/invoices/export?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`);
+export interface ExportExcelOptions {
+  /** Both dates or neither (neither = all time). */
+  startDate?: string;
+  endDate?: string;
+  /** Limit the export to one client's invoices. */
+  client?: { id: number; name: string };
+}
+export const downloadExportExcel = async ({ startDate, endDate, client }: ExportExcelOptions) => {
+  const query = new URLSearchParams();
+  if (startDate && endDate) {
+    query.set('startDate', startDate);
+    query.set('endDate', endDate);
+  }
+  if (client) query.set('client_id', String(client.id));
+  const qs = query.toString();
+  const blob = await request(`/invoices/export${qs ? `?${qs}` : ''}`);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Invoice_Records_${startDate}_to_${endDate}.xlsx`;
+  // Filename: Invoice_Records[_{Client}]_{start_to_end | All_Time}.xlsx (kept in sync with server/src/routes/invoices.ts)
+  const clientPart = client ? `_${client.name.replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'Client'}` : '';
+  const rangePart = startDate && endDate ? `${startDate}_to_${endDate}` : 'All_Time';
+  a.download = `Invoice_Records${clientPart}_${rangePart}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 };

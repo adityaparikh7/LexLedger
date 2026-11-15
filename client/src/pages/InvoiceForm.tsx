@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import {
-  getClients, getInvoice, createInvoice, updateInvoice, createClient, updateInvoiceStatus,
-  type Client, type LineItem, type Payment
+  getClients, getInvoice, createInvoice, updateInvoice, updateInvoiceStatus,
+  type Client, type Invoice, type LineItem, type Payment
 } from '../api';
 import { useToast } from '../context/ToastContext';
 import { todayLocal } from '../dates';
-import { Banknote, X, Loader2, Save, Check, Plus } from 'lucide-react';
+import { formatINR } from '../format';
+import { ArrowLeft, X, Loader2, Plus, Eye } from 'lucide-react';
+import { CardHeader, Loading, PageHeader, StatusBadge } from '../components/ui';
+import ClientModal from '../components/ClientModal';
+import PdfPreviewModal from '../components/PdfPreviewModal';
 
 interface FormLineItem {
   description: string;
@@ -18,6 +22,47 @@ interface FormPayment {
   amount_received: string;
   tds_amount: string;
 }
+
+const PARTY1_TYPES = ['None', 'Plaintiff', 'Appellant', 'Applicant', 'Petitioner', 'Claimant'];
+const PARTY2_TYPES = ['None', 'Defendant', 'Respondent'];
+
+function PartyFields({ id, label, types, type, setType, details, setDetails }: {
+  id: string;
+  label: string;
+  types: string[];
+  type: string;
+  setType: (v: string) => void;
+  details: string;
+  setDetails: (v: string) => void;
+}) {
+  const isCustom = !types.includes(type);
+  return (
+    <div className="party-col">
+      <div className="field">
+        <label className="field-label" htmlFor={`${id}-type`}>{label}</label>
+        <div className="party-type">
+          <select id={`${id}-type`} className="input" value={isCustom ? 'Custom' : type}
+            onChange={e => setType(e.target.value === 'Custom' ? '' : e.target.value)}>
+            {types.map(t => <option key={t} value={t}>{t}</option>)}
+            <option value="Custom">Custom…</option>
+          </select>
+          {isCustom && (
+            <input className="input" placeholder="Custom type" aria-label={`${label} custom type`} value={type}
+              onChange={e => setType(e.target.value)} />
+          )}
+        </div>
+      </div>
+      {type !== 'None' && (
+        <div className="field">
+          <label className="field-label" htmlFor={`${id}-details`}>{type || 'Party'} details</label>
+          <textarea id={`${id}-details`} className="input" rows={2} value={details} onChange={e => setDetails(e.target.value)}
+            placeholder={`Name(s) and details of the ${(type || 'party').toLowerCase()}`} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InvoiceForm() {
   const { id } = useParams();
   const isEditing = !!id;
@@ -41,14 +86,9 @@ export default function InvoiceForm() {
   ]);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [payments, setPayments] = useState<FormPayment[]>([]);
-
-  // Client Modal State
+  const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const [showClientModal, setShowClientModal] = useState(false);
-  const [newClientName, setNewClientName] = useState('');
-  const [newClientEmail, setNewClientEmail] = useState('');
-  const [newClientPhone, setNewClientPhone] = useState('');
-  const [newClientAddress, setNewClientAddress] = useState('');
-  const [creatingClient, setCreatingClient] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -57,6 +97,7 @@ export default function InvoiceForm() {
         setClients(clientList);
         if (isEditing) {
           const invoice = await getInvoice(Number(id));
+          setSavedInvoice(invoice);
           setClientId(String(invoice.client_id));
           setDate(invoice.date);
           setDatePaid(invoice.date_paid || '');
@@ -91,6 +132,7 @@ export default function InvoiceForm() {
     };
     init();
   }, [id, addToast, isEditing]);
+
   const addLineItem = () => {
     setLineItems([...lineItems, { description: '', hours: '', rate: '' }]);
   };
@@ -107,35 +149,26 @@ export default function InvoiceForm() {
     const hours = parseFloat(item.hours) || 0;
     const rate = parseFloat(item.rate) || 0;
     if (hours > 0) return hours * rate;
-    return rate; // If no hours, treat rate as flat amount
+    return rate; // No hours: the rate is a flat fee
   };
   const subtotal = lineItems.reduce((sum, item) => sum + calculateAmount(item), 0);
   const taxAmount = subtotal * (parseFloat(taxRate) || 0) / 100;
   const total = subtotal + taxAmount;
 
-  // Payment calculations
   const totalReceived = payments.reduce((sum, p) => sum + (parseFloat(p.amount_received) || 0), 0);
   const totalTds = payments.reduce((sum, p) => sum + (parseFloat(p.tds_amount) || 0), 0);
   const remainingBalance = total - totalReceived - totalTds;
 
   const addPayment = () => {
-    setPayments([...payments, {
-      date: todayLocal(),
-      amount_received: '',
-      tds_amount: '',
-    }]);
+    setPayments([...payments, { date: todayLocal(), amount_received: '', tds_amount: '' }]);
   };
   const removePayment = (index: number) => {
-    if (payments.length <= 1) {
-      setPayments([]);
-      return;
-    }
     setPayments(payments.filter((_, i) => i !== index));
   };
   const updatePayment = (index: number, field: keyof FormPayment, value: string) => {
     const updated = [...payments];
     updated[index] = { ...updated[index], [field]: value };
-    // Auto-calculate TDS when amount_received changes
+    // Auto-calculate TDS as the remainder when the amount received changes
     if (field === 'amount_received') {
       const received = parseFloat(value) || 0;
       const otherReceived = updated.reduce((sum, p, i) => i !== index ? sum + (parseFloat(p.amount_received) || 0) : sum, 0);
@@ -146,33 +179,14 @@ export default function InvoiceForm() {
     setPayments(updated);
   };
 
-  const handleCreateClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreatingClient(true);
+  const handleClientSaved = async (client: Client) => {
+    setShowClientModal(false);
     try {
-      const newClient = await createClient({
-        name: newClientName,
-        email: newClientEmail,
-        phone: newClientPhone,
-        address: newClientAddress,
-      });
-      addToast('Client created!', 'success');
-      
-      const clientList = await getClients();
-      setClients(clientList);
-      
-      setClientId(String(newClient.id));
-      
-      setNewClientName('');
-      setNewClientEmail('');
-      setNewClientPhone('');
-      setNewClientAddress('');
-      setShowClientModal(false);
-    } catch (err: unknown) {
-      addToast((err as Error).message, 'error');
-    } finally {
-      setCreatingClient(false);
+      setClients(await getClients());
+    } catch {
+      setClients(prev => [...prev, client]);
     }
+    setClientId(String(client.id));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -219,13 +233,13 @@ export default function InvoiceForm() {
         if (remainingBalance <= 0.01 && (totalReceived > 0 || totalTds > 0)) {
           await updateInvoiceStatus(Number(id), 'paid');
         }
-        addToast('Invoice updated!', 'success');
+        addToast('Invoice updated', 'success');
       } else {
         const result = await createInvoice(payload);
         if (remainingBalance <= 0.01 && (totalReceived > 0 || totalTds > 0)) {
           await updateInvoiceStatus(result.id, 'paid');
         }
-        addToast('Invoice created!', 'success');
+        addToast(`Invoice ${result.invoice_number} created`, 'success');
       }
       navigate('/invoices');
     } catch (err: unknown) {
@@ -234,560 +248,191 @@ export default function InvoiceForm() {
       setSaving(false);
     }
   };
-  if (loading) {
-    return <div className="loading-center"><div className="spinner"></div></div>;
-  }
+
+  if (loading) return <Loading />;
+
+  const clientName = clients.find(c => String(c.id) === clientId)?.name;
+  const hasPayments = payments.length > 0;
+
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">
-            {isEditing ? "Edit Invoice" : "New Invoice"}
-          </h1>
-          <p className="page-subtitle">
-            {invoiceNumber
-              ? `Invoice: ${invoiceNumber}`
-              : "Invoice number will be auto-generated"}
-          </p>
-        </div>
-        <button
-          className="btn btn-outline"
-          onClick={() => navigate("/invoices")}>
-          ← Back to Invoices
-        </button>
-      </div>
-      <form onSubmit={handleSubmit}>
-        <div className="card" style={{ marginBottom: 24 }}>
-          <h3 style={{ marginBottom: 20, fontSize: 16, fontWeight: 600 }}>
-            Invoice Details
-          </h3>
-          <div className="form-row">
-            {isEditing && (
-              <div className="form-group">
-                <label className="form-label">Invoice Number *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  required
-                />
-              </div>
-            )}
-            <div className="form-group">
-              <label className="form-label">Client *</label>
-              <select
-                className="form-select"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                required>
-                <option value="">Select a client...</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              {
-                <p
-                  style={{
-                    marginTop: 8,
-                    fontSize: 12,
-                    color: "var(--accent-amber)",
-                  }}>
-                  <span
-                    style={{ cursor: "pointer", color: "var(--accent-blue)" }}
-                    onClick={() => setShowClientModal(true)}>
-                    Add a new client? →
-                  </span>
-                </p>
-              }
-            </div>
-            <div className="form-group">
-              <label className="form-label">Date *</label>
-              <input
-                type="date"
-                className="form-input"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Date Paid</label>
-              <input
-                type="date"
-                className="form-input"
-                value={datePaid}
-                onChange={(e) => setDatePaid(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-        {/* Case Details */}
-        <div className="card" style={{ marginBottom: 24 }}>
-          <h3 style={{ marginBottom: 20, fontSize: 16, fontWeight: 600 }}>
-            Case Details
-          </h3>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Case Name / Title</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. Smith vs. Johnson"
-                value={caseName}
-                onChange={(e) => setCaseName(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">First Party Type</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <select
-                  className="form-select"
-                  value={['None', 'Plaintiff', 'Appellant', 'Applicant', 'Petitioner', 'Claimant'].includes(caseParty1Type) ? caseParty1Type : 'Custom'}
-                  onChange={(e) => {
-                    if (e.target.value === 'Custom') {
-                      setCaseParty1Type('');
-                    } else {
-                      setCaseParty1Type(e.target.value);
-                    }
-                  }}
-                  style={{ flex: ['None', 'Plaintiff', 'Appellant', 'Applicant', 'Petitioner', 'Claimant'].includes(caseParty1Type) ? 1 : '0 0 150px' }}>
-                  <option value="None">None</option>
-                  <option value="Plaintiff">Plaintiff</option>
-                  <option value="Appellant">Appellant</option>
-                  <option value="Applicant">Applicant</option>
-                  <option value="Petitioner">Petitioner</option>
-                  <option value="Claimant">Claimant</option>
-                  <option value="Custom">Custom...</option>
+    <div className="page">
+      <PageHeader
+        back={<Link to="/invoices" className="back-link"><ArrowLeft size={20} /> Back to invoices</Link>}
+        title={isEditing ? 'Edit invoice' : 'New invoice'}
+        badge={savedInvoice && <StatusBadge status={savedInvoice.status} />}
+        subtitle={isEditing
+          ? `Invoice ${savedInvoice?.invoice_number || invoiceNumber}${clientName ? ` · ${clientName}` : ''}`
+          : 'The invoice number is assigned when you save'}
+      />
+
+      <form className="form-layout" onSubmit={handleSubmit}>
+        <div className="form-column">
+          <section className="card">
+            <CardHeader title="Client & dates" />
+            <div className={`client-dates${isEditing ? ' with-number' : ''}`}>
+              {isEditing && (
+                <div className="field">
+                  <label className="field-label" htmlFor="inv-number">Invoice number</label>
+                  <input id="inv-number" className="input" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} required />
+                </div>
+              )}
+              <div className="field">
+                <label className="field-label" htmlFor="inv-client">Client *</label>
+                <select id="inv-client" className="input" value={clientId} onChange={e => setClientId(e.target.value)} required>
+                  <option value="">Select a client…</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                {!['None', 'Plaintiff', 'Appellant', 'Applicant', 'Petitioner', 'Claimant'].includes(caseParty1Type) && (
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Enter custom type"
-                    value={caseParty1Type}
-                    onChange={(e) => setCaseParty1Type(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                )}
-              </div>
-            </div>
-            {caseParty1Type !== 'None' && (
-              <div className="form-group" style={{ flex: 2 }}>
-                <label className="form-label">{caseParty1Type || 'Party'} Details</label>
-                <textarea
-                  className="form-textarea"
-                  placeholder={`Name(s) and details of the ${(caseParty1Type || 'party').toLowerCase()}(s)...`}
-                  value={casePlaintiff}
-                  onChange={(e) => setCasePlaintiff(e.target.value)}
-                  rows={2}
-                />
-              </div>
-            )}
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Second Party Type</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <select
-                  className="form-select"
-                  value={['None', 'Defendant', 'Respondent'].includes(caseParty2Type) ? caseParty2Type : 'Custom'}
-                  onChange={(e) => {
-                    if (e.target.value === 'Custom') {
-                      setCaseParty2Type('');
-                    } else {
-                      setCaseParty2Type(e.target.value);
-                    }
-                  }}
-                  style={{ flex: ['None', 'Defendant', 'Respondent'].includes(caseParty2Type) ? 1 : '0 0 150px' }}>
-                  <option value="None">None</option>
-                  <option value="Defendant">Defendant</option>
-                  <option value="Respondent">Respondent</option>
-                  <option value="Custom">Custom...</option>
-                </select>
-                {!['None', 'Defendant', 'Respondent'].includes(caseParty2Type) && (
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Enter custom type"
-                    value={caseParty2Type}
-                    onChange={(e) => setCaseParty2Type(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                )}
-              </div>
-            </div>
-            {caseParty2Type !== 'None' && (
-              <div className="form-group" style={{ flex: 2 }}>
-                <label className="form-label">{caseParty2Type || 'Party'} Details</label>
-                <textarea
-                  className="form-textarea"
-                  placeholder={`Name(s) and details of the ${(caseParty2Type || 'party').toLowerCase()}(s)...`}
-                  value={caseDefendant}
-                  onChange={(e) => setCaseDefendant(e.target.value)}
-                  rows={2}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-        {/* Line Items */}
-        <div className="card" style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 20,
-            }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600 }}>
-              Services Performed
-            </h3>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={addLineItem}>
-              + Add Service
-            </button>
-          </div>
-          <div className="line-items-section">
-            <div className="line-item-header">
-              <span>Description</span>
-              <span>Hours</span>
-              <span>Rate (₹)</span>
-              <span>Amount (₹)</span>
-              <span></span>
-            </div>
-            {lineItems.map((item, idx) => (
-              <div key={idx} className="line-item-row">
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <input
-                    className="form-input"
-                    placeholder="Service description..."
-                    value={item.description}
-                    onChange={(e) =>
-                      updateLineItem(idx, "description", e.target.value)
-                    }
-                    required
-                  />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <input
-                    type="number"
-                    className="form-input"
-                    placeholder="0"
-                    value={item.hours}
-                    onChange={(e) =>
-                      updateLineItem(idx, "hours", e.target.value)
-                    }
-                    min="0"
-                    step="0.5"
-                  />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <input
-                    type="number"
-                    className="form-input"
-                    placeholder="0.00"
-                    value={item.rate}
-                    onChange={(e) =>
-                      updateLineItem(idx, "rate", e.target.value)
-                    }
-                    min="0"
-                    step="0.01"
-                    required
-                  />
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <input
-                    className="form-input"
-                    value={`₹${calculateAmount(item).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                    disabled
-                    style={{
-                      background: "rgba(79, 142, 255, 0.05)",
-                      fontWeight: 600,
-                    }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="btn-icon"
-                  onClick={() => removeLineItem(idx)}
-                  style={{ color: "var(--accent-red)", alignSelf: "center" }}
-                  title="Remove">
-                  <X size={18} />
+                <button type="button" className="btn btn-link" style={{ alignSelf: 'flex-start' }} onClick={() => setShowClientModal(true)}>
+                  + Add a new client
                 </button>
               </div>
-            ))}
-          </div>
-          {/* Totals */}
-          <div className="invoice-totals">
-            <div className="total-row">
-              <span>Subtotal</span>
-              <span>
-                ₹
-                {subtotal.toLocaleString("en-IN", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
+              <div className="field">
+                <label className="field-label" htmlFor="inv-date">Invoice date *</label>
+                <input id="inv-date" type="date" className="input" value={date} onChange={e => setDate(e.target.value)} required />
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="inv-date-paid">Date paid</label>
+                <input id="inv-date-paid" type="date" className="input" value={datePaid} onChange={e => setDatePaid(e.target.value)} />
+              </div>
             </div>
-            <div
-              className="total-row"
-              style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span>Tax</span>
-              <input
-                type="number"
-                className="form-input"
-                value={taxRate}
-                onChange={(e) => setTaxRate(e.target.value)}
-                min="0"
-                max="100"
-                step="0.5"
-                style={{ width: 70, padding: "4px 8px", textAlign: "center" }}
-              />
-              <span>%</span>
-              <span style={{ marginLeft: "auto" }}>
-                ₹
-                {taxAmount.toLocaleString("en-IN", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
+          </section>
+
+          <section className="card">
+            <CardHeader title="Case details" subtitle="Appears on the invoice memo" />
+            <div className="field">
+              <label className="field-label" htmlFor="inv-case">Case name / title</label>
+              <input id="inv-case" className="input" placeholder="e.g. Commercial Suit No. 214 of 2026" value={caseName} onChange={e => setCaseName(e.target.value)} />
             </div>
-            <div className="total-row grand-total">
-              <span>Total</span>
-              <span>
-                ₹
-                {total.toLocaleString("en-IN", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
+            <div className="party-grid">
+              <PartyFields id="party1" label="First party" types={PARTY1_TYPES} type={caseParty1Type} setType={setCaseParty1Type}
+                details={casePlaintiff} setDetails={setCasePlaintiff} />
+              <PartyFields id="party2" label="Second party" types={PARTY2_TYPES} type={caseParty2Type} setType={setCaseParty2Type}
+                details={caseDefendant} setDetails={setCaseDefendant} />
             </div>
-          </div>
-        </div>
-        {/* Payment Details */}
-        {isEditing && (
-          <div className="card" style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Banknote size={20} /> Payment Details
-              </h3>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={addPayment}>
-                + Add Payment
-              </button>
-            </div>
-            {payments.length > 0 ? (
-              <>
-                <div style={{ marginBottom: 16 }}>
-                  {payments.map((entry, idx) => (
-                    <div key={idx} style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr 1fr auto',
-                      gap: 8,
-                      marginBottom: 8,
-                      padding: 12,
-                      borderRadius: 8,
-                      background: 'var(--bg-tertiary, rgba(0,0,0,0.03))',
-                    }}>
-                      <div>
-                        {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Date</label>}
-                        <input
-                          type="date"
-                          className="form-input"
-                          value={entry.date}
-                          onChange={(e) => updatePayment(idx, 'date', e.target.value)}
-                          style={{ fontSize: 13, padding: '6px 8px' }}
-                        />
-                      </div>
-                      <div>
-                        {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Amount Received (₹)</label>}
-                        <input
-                          type="number"
-                          className="form-input"
-                          placeholder="0.00"
-                          value={entry.amount_received}
-                          onChange={(e) => updatePayment(idx, 'amount_received', e.target.value)}
-                          min="0"
-                          step="0.01"
-                          style={{ fontSize: 13, padding: '6px 8px' }}
-                        />
-                      </div>
-                      <div>
-                        {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>TDS Amount (₹)</label>}
-                        <input
-                          type="number"
-                          className="form-input"
-                          placeholder="0.00"
-                          value={entry.tds_amount}
-                          onChange={(e) => updatePayment(idx, 'tds_amount', e.target.value)}
-                          min="0"
-                          step="0.01"
-                          style={{ fontSize: 13, padding: '6px 8px' }}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => removePayment(idx)}
-                          style={{ color: 'var(--accent-red)', padding: 4 }}
-                          title="Remove">
-                          <X size={18} />
-                        </button>
-                      </div>
+          </section>
+
+          <section className="card">
+            <CardHeader title="Services performed" subtitle="Leave hours empty to charge a fixed fee"
+              right={<button type="button" className="btn btn-secondary" onClick={addLineItem}><Plus size={18} /> Add service</button>} />
+            <div className="line-items">
+              <div className="line-grid line-head" aria-hidden="true">
+                <span>Description</span><span>Hours</span><span>Rate</span><span className="right">Amount</span><span />
+              </div>
+              {lineItems.map((item, idx) => (
+                <div key={idx} className="line-grid">
+                  <div className="line-desc">
+                    <label className="field-label line-label" htmlFor={`li-desc-${idx}`}>Service {idx + 1}</label>
+                    <input id={`li-desc-${idx}`} className="input" placeholder="Service description" value={item.description}
+                      onChange={e => updateLineItem(idx, 'description', e.target.value)} required aria-label={`Service ${idx + 1} description`} />
+                  </div>
+                  <div>
+                    <label className="field-label line-label" htmlFor={`li-hours-${idx}`}>Hours</label>
+                    <input id={`li-hours-${idx}`} type="number" className="input no-spin" placeholder="—" value={item.hours}
+                      onChange={e => updateLineItem(idx, 'hours', e.target.value)} min="0" step="0.5" aria-label={`Service ${idx + 1} hours`} />
+                  </div>
+                  <div>
+                    <label className="field-label line-label" htmlFor={`li-rate-${idx}`}>Rate</label>
+                    <div className="input-wrap has-prefix">
+                      <span className="prefix">₹</span>
+                      <input id={`li-rate-${idx}`} type="number" className="input no-spin" placeholder="0" value={item.rate}
+                        onChange={e => updateLineItem(idx, 'rate', e.target.value)} min="0" step="0.01" required aria-label={`Service ${idx + 1} rate`} />
                     </div>
-                  ))}
+                  </div>
+                  <div className="line-amount">
+                    <span className="field-label line-label">Amount</span>
+                    <span className="cell-num">{formatINR(calculateAmount(item))}</span>
+                  </div>
+                  <button type="button" className="icon-btn" onClick={() => removeLineItem(idx)} disabled={lineItems.length === 1}
+                    title="Remove service" aria-label={`Remove service ${idx + 1}`}>
+                    <X size={20} />
+                  </button>
                 </div>
-                {/* Summary */}
-                <div style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  background: 'var(--bg-tertiary, rgba(0,0,0,0.03))',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-                    <span>Total Received</span>
-                    <span style={{ fontWeight: 600 }}>₹{totalReceived.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              ))}
+            </div>
+          </section>
+
+          {isEditing && (
+            <section className="card">
+              <CardHeader title="Payments" subtitle="Record each receipt with the TDS the client withheld"
+                right={<button type="button" className="btn btn-secondary" onClick={addPayment}><Plus size={18} /> Add payment</button>} />
+              {hasPayments ? payments.map((entry, idx) => (
+                <div key={idx} className="payment-row plain">
+                  <div className="field">
+                    <label className="field-label" htmlFor={`p-date-${idx}`}>Date</label>
+                    <input id={`p-date-${idx}`} type="date" className="input" value={entry.date} onChange={e => updatePayment(idx, 'date', e.target.value)} />
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-                    <span>Total TDS</span>
-                    <span style={{ fontWeight: 600, color: 'var(--accent-amber)' }}>₹{totalTds.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <div className="field">
+                    <label className="field-label" htmlFor={`p-amt-${idx}`}>Amount received</label>
+                    <div className="input-wrap has-prefix">
+                      <span className="prefix">₹</span>
+                      <input id={`p-amt-${idx}`} type="number" className="input no-spin" placeholder="0.00" value={entry.amount_received}
+                        onChange={e => updatePayment(idx, 'amount_received', e.target.value)} min="0" step="0.01" />
+                    </div>
                   </div>
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between', fontSize: 14,
-                    fontWeight: 700, paddingTop: 6, borderTop: '1px solid var(--border-color, #ddd)',
-                    color: remainingBalance > 0.01 ? 'var(--accent-red)' : 'var(--accent-green, #2E5E4E)',
-                  }}>
-                    <span>Remaining Balance</span>
-                    <span>₹{remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <div className="field">
+                    <label className="field-label" htmlFor={`p-tds-${idx}`}>TDS withheld</label>
+                    <div className="input-wrap has-prefix">
+                      <span className="prefix">₹</span>
+                      <input id={`p-tds-${idx}`} type="number" className="input no-spin" placeholder="0.00" value={entry.tds_amount}
+                        onChange={e => updatePayment(idx, 'tds_amount', e.target.value)} min="0" step="0.01" />
+                    </div>
                   </div>
+                  <button type="button" className="icon-btn" onClick={() => removePayment(idx)} title="Remove payment"
+                    aria-label={`Remove payment ${idx + 1}`} style={{ marginBottom: 2 }}>
+                    <X size={20} />
+                  </button>
                 </div>
-              </>
-            ) : (
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', textAlign: 'center', padding: 16 }}>
-                No payments recorded yet. Click "+ Add Payment" to record a payment.
-              </p>
+              )) : (
+                <p className="text-muted">No payments recorded yet. Use “Add payment” when the client pays.</p>
+              )}
+            </section>
+          )}
+
+          <section className="card">
+            <CardHeader title="Notes / terms" />
+            <textarea className="input" rows={3} aria-label="Notes or terms" value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="Payment terms, notes or special instructions…" />
+          </section>
+        </div>
+
+        <aside className="card summary-card" aria-label="Invoice summary">
+          <CardHeader title="Summary" />
+          <div className="summary-line"><span>Subtotal</span><span className="value">{formatINR(subtotal)}</span></div>
+          <div className="summary-line">
+            <span>Tax</span>
+            <div className="input-wrap tax-input">
+              <input type="number" className="input no-spin" value={taxRate} onChange={e => setTaxRate(e.target.value)}
+                min="0" max="100" step="0.5" aria-label="Tax rate in percent" />
+              <span className="suffix">%</span>
+            </div>
+            <span className="value" style={{ minWidth: 88, textAlign: 'right' }}>{formatINR(taxAmount)}</span>
+          </div>
+          <div className="summary-divider" />
+          <div className="summary-line total"><span>Total</span><span className="value">{formatINR(total)}</span></div>
+          {isEditing && hasPayments && <>
+            <div className="summary-line"><span>Received + TDS</span><span className="value">{formatINR(totalReceived + totalTds)}</span></div>
+            <div className={`summary-line ${remainingBalance > 0.01 ? 'due' : 'settled'}`}>
+              <span>{remainingBalance > 0.01 ? 'Balance due' : 'Fully paid'}</span>
+              <span className="value">{formatINR(Math.max(0, remainingBalance))}</span>
+            </div>
+          </>}
+          <div className="summary-actions">
+            <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={saving}>
+              {saving && <Loader2 size={18} className="spin" />}
+              {saving ? 'Saving…' : isEditing ? 'Update invoice' : 'Create invoice'}
+            </button>
+            {isEditing && savedInvoice && (
+              <button type="button" className="btn btn-secondary btn-block" onClick={() => setShowPreview(true)} title="Shows the last saved version">
+                <Eye size={18} /> Preview PDF
+              </button>
             )}
+            <button type="button" className="btn btn-ghost btn-block" onClick={() => navigate('/invoices')}>Cancel</button>
           </div>
-        )}
-        {/* Notes */}
-        <div className="card" style={{ marginBottom: 24 }}>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Notes / Terms</label>
-            <textarea
-              className="form-textarea"
-              placeholder="Payment terms, notes, or special instructions..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-            />
-          </div>
-        </div>
-        {/* Submit */}
-        <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            className="btn btn-outline"
-            onClick={() => navigate("/invoices")}>
-            Cancel
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving
-              ? <><Loader2 size={16} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 16, height: 16 }} /> Saving...</>
-              : isEditing
-                ? <><Save size={16} /> Update Invoice</>
-                : <><Check size={16} /> Create Invoice</>}
-          </button>
-        </div>
+        </aside>
       </form>
 
-      {/* Add Client Modal */}
-      {showClientModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => setShowClientModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Add Client</h3>
-              <button
-                type="button"
-                className="btn-icon"
-                onClick={() => setShowClientModal(false)}>
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleCreateClient}>
-              <div className="form-group">
-                <label className="form-label">Name *</label>
-                <input
-                  className="form-input"
-                  placeholder="Client name..."
-                  value={newClientName}
-                  onChange={(e) => setNewClientName(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Email</label>
-                <input
-                  type="email"
-                  className="form-input"
-                  placeholder="client@example.com"
-                  value={newClientEmail}
-                  onChange={(e) => setNewClientEmail(e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Phone</label>
-                <input
-                  className="form-input"
-                  placeholder="+1 (555) 123-4567"
-                  value={newClientPhone}
-                  onChange={(e) => setNewClientPhone(e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Address</label>
-                <textarea
-                  className="form-textarea"
-                  placeholder="Client address..."
-                  value={newClientAddress}
-                  onChange={(e) => setNewClientAddress(e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  justifyContent: "flex-end",
-                }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => setShowClientModal(false)}>
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={creatingClient}>
-                  {creatingClient ? <><Loader2 size={16} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 16, height: 16 }} /> Saving...</> : <><Plus size={16} /> Add Client</>}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {showClientModal && <ClientModal onClose={() => setShowClientModal(false)} onSaved={handleClientSaved} />}
+      {showPreview && savedInvoice && <PdfPreviewModal invoice={savedInvoice} onClose={() => setShowPreview(false)} />}
     </div>
   );
 }

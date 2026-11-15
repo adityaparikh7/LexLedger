@@ -1,29 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  getClients, createClient, updateClient, deleteClient,
-  type Client
-} from '../api';
-import { useToast } from '../context/ToastContext';
-import { Search, Edit2, Trash2, Users, X, Save, Plus } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getClients, getInvoices, deleteClient, type Client, type Invoice } from '../api';
+import { useToast } from '../context/ToastContext';
+import { Search, Pencil, Trash2, Users, Plus, X } from 'lucide-react';
+import { formatINR, initials, plural } from '../format';
+import { EmptyState, Loading, PageHeader } from '../components/ui';
+import ClientModal from '../components/ClientModal';
+import ConfirmDialog from '../components/ConfirmDialog';
+
+interface ClientTotals { count: number; billed: number; outstanding: number }
 
 export default function Clients() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [modal, setModal] = useState<{ client: Client | null } | null>(null);
+  const [toDelete, setToDelete] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const { addToast } = useToast();
   const navigate = useNavigate();
-  // Form state
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+
   const fetchClients = useCallback(async () => {
     try {
-      const data = await getClients();
-      setClients(data);
+      const [clientList, invoiceList] = await Promise.all([getClients(), getInvoices()]);
+      setClients(clientList);
+      setInvoices(invoiceList);
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     } finally {
@@ -31,185 +32,140 @@ export default function Clients() {
     }
   }, [addToast]);
   useEffect(() => { fetchClients(); }, [fetchClients]);
-  const openAddModal = () => {
-    setEditingClient(null);
-    setName('');
-    setEmail('');
-    setPhone('');
-    setAddress('');
-    setShowModal(true);
-  };
-  const openEditModal = (client: Client) => {
-    setEditingClient(client);
-    setName(client.name);
-    setEmail(client.email || '');
-    setPhone(client.phone || '');
-    setAddress(client.address || '');
-    setShowModal(true);
-  };
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editingClient) {
-        await updateClient(editingClient.id, { name, email, phone, address });
-        addToast('Client updated!', 'success');
-      } else {
-        await createClient({ name, email, phone, address });
-        addToast('Client added!', 'success');
+
+  const totals = useMemo(() => {
+    const map = new Map<number, ClientTotals>();
+    for (const inv of invoices) {
+      const t = map.get(inv.client_id) || { count: 0, billed: 0, outstanding: 0 };
+      t.count += 1;
+      if (inv.status !== 'cancelled') t.billed += inv.total;
+      if (inv.status !== 'paid' && inv.status !== 'cancelled') {
+        t.outstanding += Math.max(0, inv.total - (inv.amount_received || 0) - (inv.tds_amount || 0));
       }
-      setShowModal(false);
-      fetchClients();
-    } catch (err: unknown) {
-      addToast((err as Error).message, 'error');
+      map.set(inv.client_id, t);
     }
-  };
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this client? This cannot be undone.')) return;
+    return map;
+  }, [invoices]);
+
+  const handleDelete = async () => {
+    if (!toDelete) return;
     try {
-      await deleteClient(id);
-      addToast('Client deleted', 'success');
+      await deleteClient(toDelete.id);
+      addToast(`${toDelete.name} deleted`, 'success');
       fetchClients();
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     }
   };
+
+  const term = searchTerm.trim().toLowerCase();
   const filtered = clients.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+    !term ||
+    c.name.toLowerCase().includes(term) ||
+    (c.email || '').toLowerCase().includes(term) ||
+    (c.phone || '').toLowerCase().includes(term)
   );
-  if (loading) {
-    return <div className="loading-center"><div className="spinner"></div></div>;
-  }
+
+  if (loading) return <Loading />;
+
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Clients</h1>
-          <p className="page-subtitle">{clients.length} clients</p>
-        </div>
-        <button className="btn btn-primary" onClick={openAddModal}>
-          + Add Client
-        </button>
-      </div>
-      {/* Search */}
-      <div className="filter-bar" style={{ marginBottom: 24 }}>
-        <div style={{ position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-muted)' }} />
-          <input
-            className="form-input"
-            placeholder="Search clients..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            style={{ width: 300, paddingLeft: 36 }}
-          />
+    <div className="page">
+      <PageHeader
+        title="Clients"
+        subtitle={plural(clients.length, 'client')}
+        actions={<button className="btn btn-secondary" onClick={() => setModal({ client: null })}><Plus size={18} /> Add client</button>}
+      />
+
+      <div className="toolbar">
+        <div className="input-wrap has-leading has-suffix search-field">
+          <span className="leading-icon"><Search size={20} /></span>
+          <input className="input input-sm" placeholder="Search clients" value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)} aria-label="Search clients" />
+          {searchTerm && <button type="button" className="icon-btn clear-btn" onClick={() => setSearchTerm('')} aria-label="Clear search"><X size={18} /></button>}
         </div>
       </div>
-      {/* Client table */}
-      <div className="table-container">
+
+      <section className="table-card">
         {filtered.length > 0 ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Address</th>
-                <th>Added</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(client => (
-                <tr key={client.id}>
-                  <td 
-                    style={{ fontWeight: 600, color: 'var(--accent-blue)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 4 }}
-                    onClick={() => navigate('/invoices', { state: { clientName: client.name } })}
-                    title={`View invoices for ${client.name}`}
-                  >
-                    {client.name}
-                  </td>
-                  <td>{client.email || '—'}</td>
-                  <td>{client.phone || '—'}</td>
-                  <td>{client.address || '—'}</td>
-                  <td>{new Date(client.created_at).toLocaleDateString()}</td>
-                  <td>
-                    <div className="btn-group">
-                      <button className="btn-icon btn-icon-blue" title="Edit" onClick={() => openEditModal(client)}><Edit2 size={18} /></button>
-                      <button className="btn-icon btn-icon-red" title="Delete" onClick={() => handleDelete(client.id)}><Trash2 size={18} /></button>
-                    </div>
-                  </td>
+          <div className="table-scroll">
+            <table className="data-table" style={{ minWidth: 760 }}>
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Contact</th>
+                  <th className="right">Invoices</th>
+                  <th className="right">Billed</th>
+                  <th className="right">Outstanding</th>
+                  <th className="actions-col">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(client => {
+                  const t = totals.get(client.id) || { count: 0, billed: 0, outstanding: 0 };
+                  return (
+                    <tr key={client.id}>
+                      <td>
+                        <div className="client-cell">
+                          <span className="avatar soft">{initials(client.name)}</span>
+                          <div className="cell-stack" style={{ minWidth: 0 }}>
+                            <button type="button" className="invoice-link" style={{ color: 'var(--text-primary)', textAlign: 'left', whiteSpace: 'normal' }}
+                              onClick={() => navigate('/invoices', { state: { clientName: client.name } })}
+                              title={`View invoices for ${client.name}`}>
+                              {client.name}
+                            </button>
+                            {client.address && <span className="cell-sub">{client.address}</span>}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="cell-stack">
+                          <span>{client.email || <span className="text-muted">No email</span>}</span>
+                          {client.phone && <span className="cell-sub">{client.phone}</span>}
+                        </div>
+                      </td>
+                      <td className="right cell-num">{t.count}</td>
+                      <td className="right cell-num">{formatINR(t.billed, false)}</td>
+                      <td className={`right cell-num ${t.outstanding > 0.01 ? 'text-accent' : 'text-muted'}`}>{formatINR(t.outstanding, false)}</td>
+                      <td className="actions-col">
+                        <div className="row-actions">
+                          <button className="icon-btn" title="Edit" aria-label={`Edit ${client.name}`} onClick={() => setModal({ client })}><Pencil size={20} /></button>
+                          <button className="icon-btn danger" aria-label={`Delete ${client.name}`}
+                            title={t.count ? 'Clients with invoices can’t be deleted' : 'Delete'}
+                            disabled={t.count > 0} onClick={() => setToDelete(client)}>
+                            <Trash2 size={20} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : clients.length === 0 ? (
+          <EmptyState icon={<Users size={24} />} title="No clients yet" text="Add your first client to start creating invoices."
+            action={<button className="btn btn-primary" onClick={() => setModal({ client: null })}><Plus size={18} /> Add client</button>} />
         ) : (
-          <div className="empty-state">
-            <div className="empty-icon"><Users size={48} /></div>
-            <div className="empty-text">No clients found</div>
-            <div className="empty-subtext">Add your first client to start creating invoices</div>
-          </div>
+          <EmptyState icon={<Search size={24} />} title={`No clients match “${searchTerm.trim()}”`}
+            text={`Check the spelling, or clear the search to see all ${plural(clients.length, 'client')}.`}
+            action={<button className="btn btn-secondary" onClick={() => setSearchTerm('')}>Clear search</button>} />
         )}
-      </div>
-      {/* Modal */}
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">{editingClient ? 'Edit Client' : 'Add Client'}</h3>
-              <button type="button" className="btn-icon" onClick={() => setShowModal(false)}><X size={20} /></button>
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label">Name *</label>
-                <input
-                  className="form-input"
-                  placeholder="Client name..."
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Email</label>
-                <input
-                  type="email"
-                  className="form-input"
-                  placeholder="client@example.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Phone</label>
-                <input
-                  className="form-input"
-                  placeholder="+1 (555) 123-4567"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Address</label>
-                <textarea
-                  className="form-textarea"
-                  placeholder="Client address..."
-                  value={address}
-                  onChange={e => setAddress(e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingClient ? <><Save size={16} /> Update</> : <><Plus size={16} /> Add Client</>}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      </section>
+
+      {modal && (
+        <ClientModal client={modal.client} onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); fetchClients(); }} />
+      )}
+
+      {toDelete && (
+        <ConfirmDialog
+          title={`Delete ${toDelete.name}?`}
+          body="This permanently removes the client and their contact details. This can’t be undone."
+          confirmLabel="Delete client"
+          cancelLabel="Keep client"
+          onConfirm={handleDelete}
+          onClose={() => setToDelete(null)}
+        />
       )}
     </div>
   );

@@ -94,22 +94,52 @@ router.get('/', (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-// GET export invoices as Excel for a date range
+// GET export invoices as Excel. Optional filters (combinable):
+//   startDate + endDate (must be given together) — invoice date range
+//   client_id — a single client's invoices
+// With no filters, every invoice is exported.
 router.get('/export', async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query;
-    if (!startDate || !endDate) {
-      return res.status(400).json({ error: 'startDate and endDate are required' });
+    const startDate = typeof req.query.startDate === 'string' && req.query.startDate ? req.query.startDate : null;
+    const endDate = typeof req.query.endDate === 'string' && req.query.endDate ? req.query.endDate : null;
+    const clientIdParam = typeof req.query.client_id === 'string' && req.query.client_id ? req.query.client_id : null;
+
+    if (!startDate !== !endDate) {
+      return res.status(400).json({ error: 'startDate and endDate must be provided together' });
     }
 
-    // Query invoices in the date range
+    // Resolve the client (if filtering by one) so a bad id gives a clear error and we can name the file
+    let client: { id: number; name: string } | undefined;
+    if (clientIdParam) {
+      const clientId = Number(clientIdParam);
+      if (!Number.isInteger(clientId) || clientId <= 0) {
+        return res.status(400).json({ error: 'client_id must be a valid client id' });
+      }
+      client = db.prepare('SELECT id, name FROM clients WHERE id = ?').get(clientId) as { id: number; name: string } | undefined;
+      if (!client) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+    }
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+    if (client) {
+      conditions.push('i.client_id = ?');
+      params.push(client.id);
+    }
+    if (startDate && endDate) {
+      conditions.push('i.date >= ? AND i.date <= ?');
+      params.push(startDate, endDate);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
     const invoices = db.prepare(`
       SELECT i.*, c.name as client_name, c.email as client_email, c.address as client_address, c.phone as client_phone
       FROM invoices i
       LEFT JOIN clients c ON i.client_id = c.id
-      WHERE i.date >= ? AND i.date <= ?
+      ${where}
       ORDER BY i.date ASC
-    `).all(startDate, endDate) as any[];
+    `).all(...params) as any[];
 
     // Enrich each invoice with line_items and payments
     const enriched = invoices.map((inv: any) => {
@@ -120,9 +150,12 @@ router.get('/export', async (req: Request, res: Response) => {
 
     const excelBuffer = await generateExportExcel(enriched);
 
-    const safeStart = (startDate as string).replace(/[\\/]/g, '-');
-    const safeEnd = (endDate as string).replace(/[\\/]/g, '-');
-    const fileName = `Invoice_Records_${safeStart}_to_${safeEnd}.xlsx`;
+    // Filename: Invoice_Records[_{Client}]_{start_to_end | All_Time}.xlsx (kept in sync with client/src/api.ts)
+    const clientPart = client ? `_${client.name.replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'Client'}` : '';
+    const rangePart = startDate && endDate
+      ? `${startDate.replace(/[^0-9-]/g, '-')}_to_${endDate.replace(/[^0-9-]/g, '-')}`
+      : 'All_Time';
+    const fileName = `Invoice_Records${clientPart}_${rangePart}.xlsx`;
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);

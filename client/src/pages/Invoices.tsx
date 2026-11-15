@@ -1,14 +1,20 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   getInvoices, getInvoice, deleteInvoice, updateInvoiceStatus,
   downloadPDF, downloadExcel, sendInvoice, sendReminder,
-  fetchPDFPreviewUrl,
   type Invoice, type Payment
 } from '../api';
 import { useToast } from '../context/ToastContext';
 import { todayLocal } from '../dates';
-import { Edit2, FileText, FileSpreadsheet, Send, Bell, Trash2, Search, X, Loader2, Check, FileDown, Eye, CircleEllipsis } from 'lucide-react';
+import { formatDate, formatINR, plural, financialYearLabel } from '../format';
+import {
+  Pencil, FileText, FileSpreadsheet, Send, BellRing, Trash2, Search, X, Loader2, Check, Download, Eye, Ellipsis,
+  Plus, CircleCheck, Undo2, Ban, Calendar,
+} from 'lucide-react';
+import { EmptyState, InvoiceCard, Loading, Modal, PageHeader, StatusBadge } from '../components/ui';
+import ConfirmDialog from '../components/ConfirmDialog';
+import PdfPreviewModal from '../components/PdfPreviewModal';
 
 interface FormPayment {
   date: string;
@@ -16,102 +22,127 @@ interface FormPayment {
   tds_amount: string;
 }
 
+type StatusFilter = '' | Invoice['status'];
+type SortKey = 'newest' | 'oldest' | 'amount' | 'balance';
+
+const FILTERS: { key: StatusFilter; label: string }[] = [
+  { key: '', label: 'All' },
+  { key: 'draft', label: 'Draft' },
+  { key: 'sent', label: 'Sent' },
+  { key: 'unpaid', label: 'Unpaid' },
+  { key: 'paid', label: 'Paid' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
+
+const MENU_WIDTH = 224;
+
+const balanceOf = (inv: Invoice) => inv.total - (inv.amount_received || 0) - (inv.tds_amount || 0);
+const isOpen = (inv: Invoice) => inv.status !== 'paid' && inv.status !== 'cancelled';
+
 export default function Invoices() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
+  const [sort, setSort] = useState<SortKey>('newest');
   const location = useLocation();
-  const [searchTerm, setSearchTerm] = useState(location.state?.clientName || '');
+  const [searchTerm, setSearchTerm] = useState<string>(location.state?.clientName || '');
   const navigate = useNavigate();
   const { addToast } = useToast();
 
-  // Overflow dropdown state
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  // Row overflow menu — positioned with `fixed` so the table's scroll container can't clip it
+  const [menu, setMenu] = useState<{ invoice: Invoice; top?: number; bottom?: number; left: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (openMenuId === null) return;
-    const handleOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpenMenuId(null);
-      }
-    };
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, [openMenuId]);
-
-  // Payment modal state
-  const [paymentModal, setPaymentModal] = useState<{ open: boolean; invoice: Invoice | null }>({ open: false, invoice: null });
+  // Modals
+  const [paymentModal, setPaymentModal] = useState<Invoice | null>(null);
   const [paymentEntries, setPaymentEntries] = useState<FormPayment[]>([]);
   const [submittingPayment, setSubmittingPayment] = useState(false);
-
-  // PDF Preview modal state
-  const [previewModal, setPreviewModal] = useState<{ open: boolean; invoice: Invoice | null; blobUrl: string | null; loading: boolean }>(
-    { open: false, invoice: null, blobUrl: null, loading: false }
-  );
+  const [preview, setPreview] = useState<Invoice | null>(null);
+  const [toDelete, setToDelete] = useState<Invoice | null>(null);
 
   const fetchInvoices = useCallback(async () => {
     try {
-      const data = await getInvoices(statusFilter ? { status: statusFilter } : undefined);
-      setInvoices(data);
+      setInvoices(await getInvoices());
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, addToast]);
+  }, [addToast]);
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this invoice?')) return;
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onDown = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) close(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', close);
+    document.querySelector('.main-content')?.addEventListener('scroll', close);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', close);
+      document.querySelector('.main-content')?.removeEventListener('scroll', close);
+    };
+  }, [menu]);
+
+  // Flip the menu above its button when it would run off the bottom of the window
+  useLayoutEffect(() => {
+    if (!menu || menu.bottom !== undefined || !menuRef.current || menu.top === undefined) return;
+    const h = menuRef.current.offsetHeight;
+    if (menu.top + h > window.innerHeight - 8) {
+      // top = button bottom + 6 and the button is 40px tall, so its top edge sits at top − 46
+      setMenu(m => m && ({ ...m, top: undefined, bottom: window.innerHeight - (m.top! - 46) + 6 }));
+    }
+  }, [menu]);
+
+  const openMenu = (inv: Invoice, button: HTMLElement) => {
+    if (menu?.invoice.id === inv.id) { setMenu(null); return; }
+    const r = button.getBoundingClientRect();
+    setMenu({ invoice: inv, top: r.bottom + 6, left: Math.max(8, r.right - MENU_WIDTH) });
+  };
+
+  const handleDelete = async () => {
+    if (!toDelete) return;
     try {
-      await deleteInvoice(id);
-      addToast('Invoice deleted', 'success');
+      await deleteInvoice(toDelete.id);
+      addToast(`Invoice ${toDelete.invoice_number} deleted`, 'success');
       fetchInvoices();
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     }
   };
-  const handleStatusChange = async (inv: Invoice, newStatus: string) => {
-    if (newStatus === 'paid') {
-      try {
-        const fullInv = await getInvoice(inv.id);
-        setPaymentModal({ open: true, invoice: fullInv });
-        
-        if (fullInv.payments && fullInv.payments.length > 0) {
-          const entries = fullInv.payments.map(p => ({
-            date: p.date,
-            amount_received: String(p.amount_received),
-            tds_amount: String(p.tds_amount)
-          }));
-          
-          const totalReceived = fullInv.payments.reduce((sum, p) => sum + (p.amount_received || 0), 0);
-          const totalTds = fullInv.payments.reduce((sum, p) => sum + (p.tds_amount || 0), 0);
-          const balance = fullInv.total - totalReceived - totalTds;
-          
-          if (balance > 0.01) {
-            entries.push({
-              date: todayLocal(),
-              amount_received: String(balance),
-              tds_amount: '0'
-            });
-          }
-          setPaymentEntries(entries);
-        } else {
-          setPaymentEntries([{
-            date: todayLocal(),
-            amount_received: String(fullInv.total),
-            tds_amount: '0',
-          }]);
+
+  const openPaymentModal = async (inv: Invoice) => {
+    try {
+      const fullInv = await getInvoice(inv.id);
+      if (fullInv.payments && fullInv.payments.length > 0) {
+        const entries = fullInv.payments.map(p => ({
+          date: p.date,
+          amount_received: String(p.amount_received),
+          tds_amount: String(p.tds_amount)
+        }));
+        const balance = balanceOf(fullInv);
+        if (balance > 0.01) {
+          entries.push({ date: todayLocal(), amount_received: String(balance), tds_amount: '0' });
         }
-      } catch (err: unknown) {
-        addToast('Failed to load invoice details', 'error');
+        setPaymentEntries(entries);
+      } else {
+        setPaymentEntries([{ date: todayLocal(), amount_received: String(fullInv.total), tds_amount: '0' }]);
       }
-      return;
+      setPaymentModal(fullInv);
+    } catch {
+      addToast('Failed to load invoice details', 'error');
     }
+  };
+
+  const handleStatusChange = async (inv: Invoice, newStatus: Invoice['status']) => {
+    if (newStatus === 'paid') return openPaymentModal(inv);
     try {
       await updateInvoiceStatus(inv.id, newStatus);
-      addToast(`Invoice marked as ${newStatus}`, 'success');
+      addToast(newStatus === 'cancelled' ? `Invoice ${inv.invoice_number} cancelled` : `Invoice marked as ${newStatus}`, 'success');
       fetchInvoices();
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
@@ -119,11 +150,7 @@ export default function Invoices() {
   };
 
   const addPaymentEntry = () => {
-    setPaymentEntries([...paymentEntries, {
-      date: todayLocal(),
-      amount_received: '',
-      tds_amount: '',
-    }]);
+    setPaymentEntries([...paymentEntries, { date: todayLocal(), amount_received: '', tds_amount: '' }]);
   };
 
   const removePaymentEntry = (index: number) => {
@@ -134,13 +161,12 @@ export default function Invoices() {
   const updatePaymentEntry = (index: number, field: keyof FormPayment, value: string) => {
     const updated = [...paymentEntries];
     updated[index] = { ...updated[index], [field]: value };
-    // Auto-calculate TDS when amount_received changes (only if TDS hasn't been manually edited)
-    if (field === 'amount_received' && paymentModal.invoice) {
+    // Auto-calculate TDS as the remainder when the amount received changes
+    if (field === 'amount_received' && paymentModal) {
       const received = parseFloat(value) || 0;
-      const invoiceTotal = paymentModal.invoice.total;
       const otherReceived = updated.reduce((sum, p, i) => i !== index ? sum + (parseFloat(p.amount_received) || 0) : sum, 0);
       const otherTds = updated.reduce((sum, p, i) => i !== index ? sum + (parseFloat(p.tds_amount) || 0) : sum, 0);
-      const remaining = invoiceTotal - otherReceived - otherTds - received;
+      const remaining = paymentModal.total - otherReceived - otherTds - received;
       updated[index].tds_amount = String(Math.max(0, remaining));
     }
     setPaymentEntries(updated);
@@ -148,7 +174,7 @@ export default function Invoices() {
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!paymentModal.invoice) return;
+    if (!paymentModal) return;
     const payments: Payment[] = paymentEntries
       .filter(p => parseFloat(p.amount_received) > 0 || parseFloat(p.tds_amount) > 0)
       .map(p => ({
@@ -162,9 +188,9 @@ export default function Invoices() {
     }
     setSubmittingPayment(true);
     try {
-      await updateInvoiceStatus(paymentModal.invoice.id, 'paid', payments);
+      await updateInvoiceStatus(paymentModal.id, 'paid', payments);
       addToast('Invoice marked as paid', 'success');
-      setPaymentModal({ open: false, invoice: null });
+      setPaymentModal(null);
       fetchInvoices();
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
@@ -173,427 +199,284 @@ export default function Invoices() {
     }
   };
 
-  const handleSend = async (id: number) => {
+  const handleSend = async (inv: Invoice) => {
     try {
-      const result = await sendInvoice(id);
+      const result = await sendInvoice(inv.id);
       if (result.autoAttached) {
-        addToast('Invoice opened in mail client with PDF attached!', 'success');
+        addToast('Invoice opened in your mail app with the PDF attached', 'success');
       } else if (result.triggerPdfDownload) {
-        // For browser-based mail clients, auto-download the PDF
-        const inv = invoices.find(i => i.id === id);
-        if (inv) {
-          downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date);
-        }
-        addToast('Mail compose opened in browser — the PDF is downloading. Please attach it to the email.', 'info');
+        downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date);
+        addToast('Compose opened in your browser — the PDF is downloading for you to attach', 'info');
       } else {
-        addToast('Mail client opened — please attach the invoice PDF manually', 'info');
+        addToast('Mail app opened — attach the invoice PDF manually', 'info');
       }
       fetchInvoices();
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     }
   };
+
   const handleRemind = async (id: number) => {
     try {
       await sendReminder(id);
-      addToast('Reminder opened in mail client!', 'success');
+      addToast('Reminder opened in your mail app', 'success');
     } catch (err: unknown) {
       addToast((err as Error).message, 'error');
     }
   };
 
-  const handleOpenPreview = async (inv: Invoice) => {
-    setPreviewModal({ open: true, invoice: inv, blobUrl: null, loading: true });
-    try {
-      const { url } = await fetchPDFPreviewUrl(inv.id);
-      setPreviewModal(prev => ({ ...prev, blobUrl: url, loading: false }));
-    } catch (err: unknown) {
-      addToast((err as Error).message, 'error');
-      setPreviewModal({ open: false, invoice: null, blobUrl: null, loading: false });
-    }
-  };
+  const term = searchTerm.trim().toLowerCase();
+  const matchesSearch = (inv: Invoice) => !term ||
+    inv.invoice_number.toLowerCase().includes(term) ||
+    inv.client_name.toLowerCase().includes(term) ||
+    (inv.case_name || '').toLowerCase().includes(term);
 
-  const handleClosePreview = () => {
-    if (previewModal.blobUrl) URL.revokeObjectURL(previewModal.blobUrl);
-    setPreviewModal({ open: false, invoice: null, blobUrl: null, loading: false });
-  };
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return '—';
-    const [year, month, day] = dateStr.split('T')[0].split('-');
-    if (year && month && day) return `${day}/${month}/${year}`;
-    return dateStr;
-  };
-  const formatCurrency = (val: number) =>
-    `₹${val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const searched = invoices.filter(matchesSearch);
+  const counts = searched.reduce<Record<string, number>>((acc, inv) => { acc[inv.status] = (acc[inv.status] || 0) + 1; return acc; }, {});
+  const filtered = searched
+    .filter(inv => !statusFilter || inv.status === statusFilter)
+    .sort((a, b) => {
+      if (sort === 'amount') return b.total - a.total;
+      if (sort === 'balance') return balanceOf(b) - balanceOf(a);
+      const byDate = a.date.localeCompare(b.date) || a.id - b.id;
+      return sort === 'oldest' ? byDate : -byDate;
+    });
+  const outstanding = filtered.filter(isOpen).reduce((sum, inv) => sum + Math.max(0, balanceOf(inv)), 0);
 
-  const filtered = invoices.filter(inv =>
-    inv.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    inv.client_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Payment modal summary calculations
+  // Payment modal summary
   const modalTotalReceived = paymentEntries.reduce((sum, p) => sum + (parseFloat(p.amount_received) || 0), 0);
   const modalTotalTds = paymentEntries.reduce((sum, p) => sum + (parseFloat(p.tds_amount) || 0), 0);
-  const modalRemaining = paymentModal.invoice
-    ? paymentModal.invoice.total - modalTotalReceived - modalTotalTds
-    : 0;
+  const modalRemaining = paymentModal ? paymentModal.total - modalTotalReceived - modalTotalTds : 0;
 
-  if (loading) {
-    return <div className="loading-center"><div className="spinner"></div></div>;
-  }
+  if (loading) return <Loading />;
+
+  const clearFilters = () => { setSearchTerm(''); setStatusFilter(''); };
+  const menuInv = menu?.invoice;
+
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Invoices</h1>
-          <p className="page-subtitle">{invoices.length} total invoices</p>
+    <div className="page">
+      <PageHeader
+        title="Invoices"
+        subtitle={`${plural(invoices.length, 'invoice')} · FY ${financialYearLabel()}`}
+        actions={
+          <select className="input input-sm" value={sort} onChange={e => setSort(e.target.value as SortKey)} aria-label="Sort invoices" style={{ width: 190 }}>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="amount">Highest amount</option>
+            <option value="balance">Highest balance</option>
+          </select>
+        }
+      />
+
+      <div className="toolbar">
+        <div className="input-wrap has-leading has-suffix search-field">
+          <span className="leading-icon"><Search size={20} /></span>
+          <input className="input input-sm" placeholder="Search invoices, clients or matters" value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)} aria-label="Search invoices" />
+          {searchTerm && <button type="button" className="icon-btn clear-btn" onClick={() => setSearchTerm('')} aria-label="Clear search"><X size={18} /></button>}
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('/invoices/new')}>
-          + New Invoice
-        </button>
-      </div>
-      {/* Filter bar */}
-      <div className="filter-bar" style={{ marginBottom: 24 }}>
-        <div style={{ position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-muted)' }} />
-          <input
-            className="form-input"
-            placeholder="Search invoices..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            style={{ width: 280, paddingLeft: 36 }}
-          />
+        <span className="toolbar-divider" />
+        <div className="chip-row" role="group" aria-label="Filter by status">
+          {FILTERS.filter(f => f.key !== 'cancelled' || counts.cancelled).map(f => (
+            <button key={f.key} type="button" className={`chip${statusFilter === f.key ? ' active' : ''}`}
+              aria-pressed={statusFilter === f.key} onClick={() => setStatusFilter(f.key)}>
+              {f.label} <span className="count">{f.key ? counts[f.key] || 0 : searched.length}</span>
+            </button>
+          ))}
         </div>
-        <select
-          className="form-select"
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-        >
-          <option value="">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="sent">Sent</option>
-          <option value="paid">Paid</option>
-          <option value="unpaid">Unpaid</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
       </div>
-      {/* Invoice table */}
-      <div className="table-container">
+
+      <section className="table-card list-card">
         {filtered.length > 0 ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Invoice #</th>
-                <th>Client</th>
-                <th>Date</th>
-                <th>Date Paid</th>
-                <th>Amount</th>
-                <th>Received</th>
-                <th>TDS</th>
-                <th>Balance</th>
-                <th>Status</th>
-                <th className="sticky-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(inv => {
-                const balance = inv.total - (inv.amount_received || 0) - (inv.tds_amount || 0);
-                return (
-                  <tr key={inv.id}>
-                    <td style={{ fontWeight: 600, color: 'var(--accent-blue)', cursor: 'pointer' }}
-                      onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
-                      {inv.invoice_number}
-                    </td>
-                    <td>{inv.client_name}</td>
-                    <td>{formatDate(inv.date)}</td>
-                    <td>{formatDate(inv.date_paid)}</td>
-                    <td style={{ fontWeight: 600 }}>{formatCurrency(inv.total)}</td>
-                    <td>{inv.amount_received ? formatCurrency(inv.amount_received) : '—'}</td>
-                    <td>{inv.tds_amount ? formatCurrency(inv.tds_amount) : '—'}</td>
-                    <td style={{
-                      fontWeight: 600,
-                      color: balance > 0.01 ? 'var(--accent-red)' : 'var(--accent-green, #2E5E4E)',
-                    }}>
-                      {inv.amount_received || inv.tds_amount ? formatCurrency(balance) : '—'}
-                    </td>
-                    <td>
-                      <select
-                        className="form-select"
-                        value={inv.status}
-                        onChange={e => handleStatusChange(inv, e.target.value)}
-                        style={{ width: 'auto', minWidth: 100, padding: '4px 28px 4px 10px', fontSize: 12 }}
-                      >
-                        <option value="draft">Draft</option>
-                        <option value="sent">Sent</option>
-                        <option value="paid">Paid</option>
-                        <option value="unpaid">Unpaid</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                    </td>
-                    <td className={`sticky-right${openMenuId === inv.id ? ' menu-open' : ''}`}>
-                      <div className="btn-group">
-                        {/* Primary actions — always visible */}
-                        <button className="btn-icon btn-icon-blue" title="Edit Invoice" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>
-                          <Edit2 size={18} />
-                        </button>
-                        <button className="btn-icon" title="Preview PDF" style={{ color: 'var(--text-secondary)' }} onClick={() => handleOpenPreview(inv)}>
-                          <Eye size={18} />
-                        </button>
-                        <button className="btn-icon btn-icon-amber" title="Send via Mail" onClick={() => handleSend(inv.id)}>
-                          <Send size={18} />
-                        </button>
-
-                        {/* Overflow menu */}
-                        <div className="action-menu" ref={openMenuId === inv.id ? dropdownRef : undefined}>
-                          <button
-                            className="btn-icon"
-                            title="More actions"
-                            style={{ color: 'var(--text-secondary)' }}
-                            onClick={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
-                          >
-                            <CircleEllipsis size={18} />
-                          </button>
-                          {openMenuId === inv.id && (
-                            <div className="dropdown-menu">
-                              <button
-                                className="dropdown-item"
-                                onClick={() => { downloadPDF(inv.id, inv.invoice_number, inv.client_name, inv.date); setOpenMenuId(null); }}
-                              >
-                                <FileDown size={15} /> Download PDF
-                              </button>
-                              <button
-                                className="dropdown-item"
-                                onClick={() => { downloadExcel(inv.id, inv.invoice_number); setOpenMenuId(null); }}
-                              >
-                                <FileSpreadsheet size={15} /> Download Excel
-                              </button>
-                              {(inv.status === 'sent' || inv.status === 'unpaid') && (
-                                <button
-                                  className="dropdown-item amber"
-                                  onClick={() => { handleRemind(inv.id); setOpenMenuId(null); }}
-                                >
-                                  <Bell size={15} /> Send Reminder
-                                </button>
-                              )}
-                              <div className="dropdown-divider" />
-                              <button
-                                className="dropdown-item danger"
-                                onClick={() => { handleDelete(inv.id); setOpenMenuId(null); }}
-                              >
-                                <Trash2 size={15} /> Delete Invoice
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
+          <>
+            <div className="table-scroll hide-mobile">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Invoice</th>
+                    <th>Client &amp; matter</th>
+                    <th>Date</th>
+                    <th className="right">Amount</th>
+                    <th className="right">Received</th>
+                    <th className="right">Balance</th>
+                    <th>Status</th>
+                    <th className="actions-col">Actions</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {filtered.map(inv => {
+                    const balance = balanceOf(inv);
+                    const paidSomething = (inv.amount_received || 0) > 0 || (inv.tds_amount || 0) > 0;
+                    return (
+                      <tr key={inv.id}>
+                        <td><button type="button" className="invoice-link" onClick={() => navigate(`/invoices/${inv.id}/edit`)}>{inv.invoice_number}</button></td>
+                        <td>
+                          <div className="cell-stack">
+                            <span className="cell-title">{inv.client_name}</span>
+                            {inv.case_name && <span className="cell-sub">{inv.case_name}</span>}
+                          </div>
+                        </td>
+                        <td className="nowrap text-secondary">{formatDate(inv.date)}</td>
+                        <td className="right cell-num">{formatINR(inv.total)}</td>
+                        <td className="right">
+                          {paidSomething ? (
+                            <div className="cell-stack right">
+                              <span className="cell-num">{formatINR(inv.amount_received)}</span>
+                              <span className="cell-sub nowrap">TDS {formatINR(inv.tds_amount, false)}</span>
+                            </div>
+                          ) : <span className="text-muted">—</span>}
+                        </td>
+                        <td className={`right cell-num ${balance > 0.01 && isOpen(inv) && inv.status !== 'draft' ? 'text-accent' : 'text-muted'}`}>
+                          {formatINR(Math.max(0, balance))}
+                        </td>
+                        <td><StatusBadge status={inv.status} /></td>
+                        <td className="actions-col">
+                          <div className="row-actions">
+                            <button className="icon-btn" title="Preview PDF" aria-label={`Preview ${inv.invoice_number}`} onClick={() => setPreview(inv)}><Eye size={20} /></button>
+                            <button className="icon-btn" title="Edit" aria-label={`Edit ${inv.invoice_number}`} onClick={() => navigate(`/invoices/${inv.id}/edit`)}><Pencil size={20} /></button>
+                            <button className={`icon-btn${menu?.invoice.id === inv.id ? ' active' : ''}`} title="More actions"
+                              aria-label={`More actions for ${inv.invoice_number}`} aria-haspopup="menu" aria-expanded={menu?.invoice.id === inv.id}
+                              onMouseDown={e => e.stopPropagation()} onClick={e => openMenu(inv, e.currentTarget)}>
+                              <Ellipsis size={20} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="invoice-cards show-mobile">
+              {filtered.map(inv => (
+                <InvoiceCard key={inv.id} invoice={inv} showBalance onOpen={() => navigate(`/invoices/${inv.id}/edit`)} />
+              ))}
+            </div>
+            <div className="table-footer">
+              <span className="grow small text-muted">
+                {filtered.length === invoices.length ? `Showing all ${plural(invoices.length, 'invoice')}` : `Showing ${filtered.length} of ${plural(invoices.length, 'invoice')}`}
+              </span>
+              <span className="text-secondary">Total outstanding</span>
+              <span className="cell-num text-accent">{formatINR(outstanding, false)}</span>
+            </div>
+          </>
+        ) : invoices.length === 0 ? (
+          <EmptyState icon={<FileText size={24} />} title="No invoices yet" text="Create your first invoice to get started."
+            action={<Link to="/invoices/new" className="btn btn-primary"><Plus size={18} /> New invoice</Link>} />
         ) : (
-          <div className="empty-state">
-            <div className="empty-icon"><FileText size={48} /></div>
-            <div className="empty-text">No invoices found</div>
-            <div className="empty-subtext">
-              {statusFilter ? 'Try changing your filter' : 'Create your first invoice to get started'}
-            </div>
-          </div>
+          <EmptyState icon={<Search size={24} />}
+            title={term ? `No invoices match “${searchTerm.trim()}”` : 'No invoices with this status'}
+            text={`Check the spelling, or clear the ${term ? 'search' : 'filter'} to see all ${plural(invoices.length, 'invoice')}.`}
+            action={<button type="button" className="btn btn-secondary" onClick={clearFilters}>{term ? 'Clear search' : 'Show all invoices'}</button>} />
         )}
-      </div>
+      </section>
 
-      {/* Payment Details Modal */}
-      {paymentModal.open && paymentModal.invoice && (
-        <div className="modal-overlay" onClick={() => setPaymentModal({ open: false, invoice: null })}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Payment Details</h3>
-              <button
-                className="btn-icon"
-                onClick={() => setPaymentModal({ open: false, invoice: null })}>
-                <X size={20} />
-              </button>
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-              Invoice <strong>{paymentModal.invoice.invoice_number}</strong> — Total: <strong>{formatCurrency(paymentModal.invoice.total)}</strong>
-            </p>
-            <form onSubmit={handlePaymentSubmit}>
-              {/* Payment entries */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Payment Entries
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={addPaymentEntry}
-                    style={{ fontSize: 11, padding: '4px 10px' }}>
-                    + Add Payment
-                  </button>
-                </div>
-                {paymentEntries.map((entry, idx) => (
-                  <div key={idx} style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr 1fr auto',
-                    gap: 8,
-                    marginBottom: 8,
-                    padding: 12,
-                    borderRadius: 8,
-                    background: 'var(--bg-tertiary, rgba(0,0,0,0.03))',
-                  }}>
-                    <div>
-                      {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Date</label>}
-                      <input
-                        type="date"
-                        className="form-input"
-                        value={entry.date}
-                        onChange={(e) => updatePaymentEntry(idx, 'date', e.target.value)}
-                        required
-                        style={{ fontSize: 13, padding: '6px 8px' }}
-                      />
-                    </div>
-                    <div>
-                      {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Amount Received (₹)</label>}
-                      <input
-                        type="number"
-                        className="form-input"
-                        placeholder="0.00"
-                        value={entry.amount_received}
-                        onChange={(e) => updatePaymentEntry(idx, 'amount_received', e.target.value)}
-                        min="0"
-                        step="0.01"
-                        required
-                        style={{ fontSize: 13, padding: '6px 8px' }}
-                      />
-                    </div>
-                    <div>
-                      {idx === 0 && <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>TDS Amount (₹)</label>}
-                      <input
-                        type="number"
-                        className="form-input"
-                        placeholder="0.00"
-                        value={entry.tds_amount}
-                        onChange={(e) => updatePaymentEntry(idx, 'tds_amount', e.target.value)}
-                        min="0"
-                        step="0.01"
-                        style={{ fontSize: 13, padding: '6px 8px' }}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                      {paymentEntries.length > 1 && (
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => removePaymentEntry(idx)}
-                          style={{ color: 'var(--accent-red)', padding: 4 }}
-                          title="Remove">
-                          <X size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Summary */}
-              <div style={{
-                padding: 12,
-                borderRadius: 8,
-                background: 'var(--bg-tertiary, rgba(0,0,0,0.03))',
-                marginBottom: 16,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-                  <span>Total Received</span>
-                  <span style={{ fontWeight: 600 }}>{formatCurrency(modalTotalReceived)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-                  <span>Total TDS</span>
-                  <span style={{ fontWeight: 600, color: 'var(--accent-amber)' }}>{formatCurrency(modalTotalTds)}</span>
-                </div>
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between', fontSize: 14,
-                  fontWeight: 700, paddingTop: 6, borderTop: '1px solid var(--border-color, #ddd)',
-                  color: modalRemaining > 0.01 ? 'var(--accent-red)' : 'var(--accent-green, #2E5E4E)',
-                }}>
-                  <span>Remaining Balance</span>
-                  <span>{formatCurrency(modalRemaining)}</span>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => setPaymentModal({ open: false, invoice: null })}>
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={submittingPayment}>
-                  {submittingPayment ? <><Loader2 size={16} className="spinner" style={{ borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: 'white', width: 16, height: 16 }} /> Saving...</> : <><Check size={16} /> Mark as Paid</>}
-                </button>
-              </div>
-            </form>
-          </div>
+      {/* Row actions menu */}
+      {menu && menuInv && (
+        <div ref={menuRef} className="dropdown-menu" role="menu"
+          style={{ position: 'fixed', top: menu.top ?? 'auto', bottom: menu.bottom ?? 'auto', left: menu.left, right: 'auto' }}
+          onClick={() => setMenu(null)}>
+          <button role="menuitem" className="dropdown-item" onClick={() => setPreview(menuInv)}><Eye size={18} /> Preview PDF</button>
+          <button role="menuitem" className="dropdown-item" onClick={() => downloadPDF(menuInv.id, menuInv.invoice_number, menuInv.client_name, menuInv.date)}><Download size={18} /> Download PDF</button>
+          <button role="menuitem" className="dropdown-item" onClick={() => downloadExcel(menuInv.id, menuInv.invoice_number)}><FileSpreadsheet size={18} /> Download Excel</button>
+          <button role="menuitem" className="dropdown-item" onClick={() => handleSend(menuInv)}><Send size={18} /> Send by email</button>
+          {(menuInv.status === 'sent' || menuInv.status === 'unpaid') && (
+            <button role="menuitem" className="dropdown-item" onClick={() => handleRemind(menuInv.id)}><BellRing size={18} /> Send reminder</button>
+          )}
+          <div className="dropdown-divider" />
+          {menuInv.status !== 'paid' && (
+            <button role="menuitem" className="dropdown-item" onClick={() => handleStatusChange(menuInv, 'paid')}><CircleCheck size={18} /> Mark as paid</button>
+          )}
+          {menuInv.status !== 'sent' && menuInv.status !== 'cancelled' && (
+            <button role="menuitem" className="dropdown-item" onClick={() => handleStatusChange(menuInv, 'sent')}><Send size={18} /> Mark as sent</button>
+          )}
+          {menuInv.status !== 'unpaid' && menuInv.status !== 'draft' && menuInv.status !== 'cancelled' && (
+            <button role="menuitem" className="dropdown-item" onClick={() => handleStatusChange(menuInv, 'unpaid')}><Calendar size={18} /> Mark as unpaid</button>
+          )}
+          {menuInv.status !== 'draft' && (
+            <button role="menuitem" className="dropdown-item" onClick={() => handleStatusChange(menuInv, 'draft')}><Undo2 size={18} /> Move back to draft</button>
+          )}
+          {menuInv.status !== 'cancelled' && (
+            <button role="menuitem" className="dropdown-item" onClick={() => handleStatusChange(menuInv, 'cancelled')}><Ban size={18} /> Cancel invoice</button>
+          )}
+          <div className="dropdown-divider" />
+          <button role="menuitem" className="dropdown-item danger" onClick={() => setToDelete(menuInv)}><Trash2 size={18} /> Delete invoice</button>
         </div>
       )}
 
-      {/* PDF Preview Modal */}
-      {previewModal.open && previewModal.invoice && (
-        <div className="modal-overlay" onClick={handleClosePreview}>
-          <div className="modal-pdf" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-pdf-toolbar">
-              <div className="modal-pdf-title">
-                <FileText size={18} style={{ color: 'var(--accent-blue)' }} />
-                <span>
-                  Fee Memo&nbsp;
-                  <strong>{previewModal.invoice.invoice_number}</strong>
-                  &nbsp;—&nbsp;{previewModal.invoice.client_name}
-                </span>
-              </div>
-              <div className="modal-pdf-actions">
-                <button
-                  className="btn btn-primary btn-sm"
-                  style={{ gap: 6 }}
-                  onClick={() => downloadPDF(
-                    previewModal.invoice!.id,
-                    previewModal.invoice!.invoice_number,
-                    previewModal.invoice!.client_name,
-                    previewModal.invoice!.date,
-                  )}
-                  disabled={previewModal.loading}
-                  title="Download PDF"
-                >
-                  <FileDown size={15} /> Download
-                </button>
-                <button
-                  className="btn-icon"
-                  onClick={handleClosePreview}
-                  title="Close preview"
-                >
+      {/* Record payment */}
+      {paymentModal && (
+        <Modal onClose={() => setPaymentModal(null)} className="modal wide" labelledBy="payment-title">
+          <div className="modal-header">
+            <div className="modal-titles">
+              <h2 className="modal-title" id="payment-title">Record payment</h2>
+              <p className="modal-subtitle">Invoice {paymentModal.invoice_number} · Total {formatINR(paymentModal.total)}</p>
+            </div>
+            <button type="button" className="icon-btn" onClick={() => setPaymentModal(null)} aria-label="Close"><X size={20} /></button>
+          </div>
+          <form onSubmit={handlePaymentSubmit}>
+            <div className="section-head">
+              <h3 className="card-title">Payments received</h3>
+              <button type="button" className="btn btn-secondary" onClick={addPaymentEntry}><Plus size={18} /> Add payment</button>
+            </div>
+            {paymentEntries.map((entry, idx) => (
+              <div key={idx} className="payment-row">
+                <div className="field">
+                  <label className="field-label" htmlFor={`pay-date-${idx}`}>Date</label>
+                  <input id={`pay-date-${idx}`} type="date" className="input" value={entry.date}
+                    onChange={e => updatePaymentEntry(idx, 'date', e.target.value)} required />
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor={`pay-amt-${idx}`}>Amount received</label>
+                  <div className="input-wrap has-prefix">
+                    <span className="prefix">₹</span>
+                    <input id={`pay-amt-${idx}`} type="number" className="input no-spin" placeholder="0.00" value={entry.amount_received}
+                      onChange={e => updatePaymentEntry(idx, 'amount_received', e.target.value)} min="0" step="0.01" required />
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor={`pay-tds-${idx}`}>TDS withheld</label>
+                  <div className="input-wrap has-prefix">
+                    <span className="prefix">₹</span>
+                    <input id={`pay-tds-${idx}`} type="number" className="input no-spin" placeholder="0.00" value={entry.tds_amount}
+                      onChange={e => updatePaymentEntry(idx, 'tds_amount', e.target.value)} min="0" step="0.01" />
+                  </div>
+                </div>
+                <button type="button" className="icon-btn" onClick={() => removePaymentEntry(idx)} disabled={paymentEntries.length === 1}
+                  aria-label={`Remove payment ${idx + 1}`} title="Remove" style={{ marginBottom: 2 }}>
                   <X size={20} />
                 </button>
               </div>
+            ))}
+            <div className="totals-box">
+              <div className="totals-line"><span>Total received</span><span className="value">{formatINR(modalTotalReceived)}</span></div>
+              <div className="totals-line"><span>Total TDS withheld</span><span className="value">{formatINR(modalTotalTds)}</span></div>
+              <div className={`totals-line ${modalRemaining > 0.01 ? 'due' : 'strong'}`}>
+                <span>Remaining balance</span><span className="value">{formatINR(modalRemaining)}</span>
+              </div>
             </div>
-            <div className="modal-pdf-body">
-              {previewModal.loading && (
-                <div className="modal-pdf-loading">
-                  <div className="spinner" style={{ borderWidth: 3, borderColor: 'rgba(255,255,255,0.2)', borderTopColor: '#fff', width: 36, height: 36 }} />
-                  <span>Generating preview…</span>
-                </div>
-              )}
-              {previewModal.blobUrl && (
-                <iframe
-                  src={previewModal.blobUrl}
-                  title={`Preview – ${previewModal.invoice.invoice_number}`}
-                />
-              )}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setPaymentModal(null)}>Cancel</button>
+              <button type="submit" className="btn btn-primary" disabled={submittingPayment}>
+                {submittingPayment ? <Loader2 size={18} className="spin" /> : <Check size={18} />}
+                {submittingPayment ? 'Saving…' : 'Mark as paid'}
+              </button>
             </div>
-          </div>
-        </div>
+          </form>
+        </Modal>
+      )}
+
+      {preview && <PdfPreviewModal invoice={preview} onClose={() => setPreview(null)} />}
+
+      {toDelete && (
+        <ConfirmDialog
+          title={`Delete invoice ${toDelete.invoice_number}?`}
+          body={<>This permanently removes the invoice, its line items and any recorded payments for {toDelete.client_name}{toDelete.client_name.endsWith('.') ? '' : '.'} This can’t be undone.</>}
+          confirmLabel="Delete invoice"
+          cancelLabel="Keep invoice"
+          onConfirm={handleDelete}
+          onClose={() => setToDelete(null)}
+        />
       )}
     </div>
   );
