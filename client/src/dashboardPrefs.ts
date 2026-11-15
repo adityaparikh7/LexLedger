@@ -5,7 +5,7 @@ export const defaultDashboardPreferences = {
   // Summary cards
   totalBilled: true,
   totalReceived: true,
-  tds: true,
+  tds: false,
   outstanding: true,
   // Count cards
   clients: false,
