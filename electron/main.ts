@@ -163,7 +163,7 @@ function createWindow() {
     height: 850,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#0a0a14',
+    backgroundColor: '#F6F5F1', // --bg-app in client/src/index.css
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -179,8 +179,8 @@ function createWindow() {
     // Windows / Linux: use hidden title bar with system overlay controls
     windowOptions.titleBarStyle = 'hidden';
     windowOptions.titleBarOverlay = {
-      color: '#0a0a14',
-      symbolColor: '#ffffff',
+      color: '#F6F5F1', // --bg-app, so the overlay blends into the page
+      symbolColor: '#1F2A26', // --text-primary
       height: 36,
     };
   }
